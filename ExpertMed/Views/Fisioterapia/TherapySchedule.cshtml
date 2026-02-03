@@ -1,0 +1,181 @@
+﻿@using Microsoft.AspNetCore.Http
+@{
+    ViewBag.Title = "Agenda de Terapias";
+    Layout = "_Layout";
+
+    // Datos de sesión para pasar al JS
+    var sessionData = new
+    {
+        usuarioId = Context.Session.GetInt32("UsuarioId") ?? 0,
+        perfilId = Context.Session.GetInt32("PerfilId") ?? 0,
+        usuarioNombre = Context.Session.GetString("UsuarioNombre") ?? "",
+        usuarioApellido = Context.Session.GetString("UsuarioApellido") ?? "",
+        urlSubmit = Url.Action("SubmitTherapySessions", "Fisioterapia"),
+        urlGetHours = Url.Action("GetAvailableHours", "Appointment")
+    };
+}
+
+<div id="session-metadata"
+     data-config='@Html.Raw(System.Text.Json.JsonSerializer.Serialize(sessionData))'
+     style="display:none;"></div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="page-title-box d-sm-flex align-items-center justify-content-between">
+            <h4 class="mb-sm-0">Planificación de Fisioterapia</h4>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form id="therapyScheduleForm">
+            <h5 class="mb-3 border-bottom pb-2 text-primary">
+                <i class="mdi mdi-account-circle-outline me-1"></i> Asignación de Paciente y Especialista
+            </h5>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Paciente</label>
+                    <select class="form-select select2" id="patientId" required>
+                        <option value="">Seleccione paciente...</option>
+                        @foreach (var p in ViewBag.Pacientes as List<PatientDTO>)
+                        {
+                            <option value="@p.PatientId">@($"{p.PatientFirstname} {p.PatientFirstsurname}")</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Terapeuta Responsable</label>
+                    @if (sessionData.perfilId == 7)
+                    {
+                        <input type="hidden" id="therapistId" value="@sessionData.usuarioId" />
+                        <input type="text" class="form-control" value="@sessionData.usuarioNombre @sessionData.usuarioApellido" readonly />
+                        <small class="text-muted">Auto-asignado como terapeuta logueado.</small>
+                    }
+                    else
+                    {
+                        <select class="form-select" id="therapistId" required>
+                            <option value="">Seleccione terapeuta...</option>
+                            @foreach (var t in ViewBag.Terapeutas as List<SelectDTO>)
+                            {
+                                <option value="@t.Value">@t.Text</option>
+                            }
+                        </select>
+                    }
+                </div>
+            </div>
+
+            <h5 class="mt-4 mb-3 border-bottom pb-2 text-primary">
+                <i class="mdi mdi-calendar-clock me-1"></i> Configuración del Tratamiento
+            </h5>
+
+            <div class="row g-3">
+
+                <div class="col-md-3">
+                    <label class="form-label">Tipo de Terapia</label>
+                    <select class="form-select select2" id="therapyType" required>
+                        <option value="">Seleccione el servicio...</option>
+                        <optgroup label="Fisioterapia Especializada">
+                            <option value="Fisioterapia neurológica">Fisioterapia neurológica</option>
+                            <option value="Fisioterapia deportiva">Fisioterapia deportiva </option>
+                            <option value="Fisioterapia traumatológica">Fisioterapia traumatológica </option>
+                            <option value="Fisioterapia geriátrica">Fisioterapia geriátrica </option>
+                            <option value="Fisioterapia pediátrica">Fisioterapia pediátrica </option>
+                            <option value="Fisioterapia facial">Fisioterapia facial </option>
+                            <option value="Fisioterapia convencional">Fisioterapia convencional </option>
+                        </optgroup>
+                        <optgroup label="Terapias Manuales y Especiales">
+                            <option value="Terapia manual y osteopatía">Terapia manual y osteopatía </option>
+                            <option value="Terapia de acupuntura + moxibustion">Terapia de acupuntura + moxibustion </option>
+                            <option value="Terapia neural">Terapia neural </option>
+                            <option value="Infiltraciones de plasma rico en plaquetas">Infiltraciones de plasma rico en plaquetas</option>
+                        </optgroup>
+                        <optgroup label="Gimnasio Terapéutico">
+                            <option value="Gimnasio terapéutico individual">Gimnasio terapéutico individual </option>
+                            <option value="Gimnasio terapéutico grupal (día)">Gimnasio terapéutico grupal (día) </option>
+                            <option value="Gimnasio terapéutico grupal (mes)">Gimnasio terapéutico grupal (mes) </option>
+                        </optgroup>
+                        <optgroup label="Otros">
+                            <option value="Evaluación y diseño del plan de tratamiento">Evaluación y diseño del plan </option>
+                            <option value="Estimulación temprana">Estimulación temprana </option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Fecha de Inicio</label>
+                    <input type="text" class="form-control" id="date" placeholder="Seleccione fecha" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Hora de Sesión</label>
+                    <select class="form-select" id="hour">
+                        <option value="">Seleccione hora...</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Repetición / Frecuencia</label>
+                    <select class="form-select" id="frequency">
+                        <option value="0">Solo una vez</option>
+                        <option value="1">Cada 1 día (Diario)</option>
+                        <option value="2">Cada 2 días (Interdiario)</option>
+                        <option value="3">Cada 3 días</option>
+                        <option value="5">Cada 5 días</option>
+                        <option value="7">Cada 7 días (Semanal)</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Total Sesiones</label>
+                    <input type="number" class="form-control" id="sessionCount" min="1" max="100" value="1" />
+                </div>
+
+                <div class="col-md-10">
+                    <label class="form-label">Observaciones del Plan</label>
+                    <textarea class="form-control" id="observations" rows="2" placeholder="Notas sobre el tratamiento..."></textarea>
+                </div>
+            </div>
+
+            <div class="mt-3 text-end">
+                <button type="button" class="btn btn-info" id="btnProyectar">
+                    <i class="mdi mdi-calendar-search"></i> Proyectar y Añadir
+                </button>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle" id="tablaTerapias">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th>#</th>
+                            <th>Tipo de Terapia</th>
+                            <th>Fecha</th>
+                            <th>Hora</th>
+                            <th>Detalles</th>
+                            <th width="80">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="mt-4 text-end">
+                <button type="button" id="btnGuardar" class="btn btn-success btn-lg" disabled>
+                    <i class="mdi mdi-content-save-check"></i> Confirmar y Guardar Plan
+                </button>
+                <button type="button" id="btnImprimir" class="btn btn-outline-secondary">
+                    <i class="mdi mdi-printer"></i> Imprimir Cronograma
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section scripts {
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="~/assets/js/fisioterapia-agenda.js"></script>
+}

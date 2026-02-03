@@ -1,0 +1,511 @@
+﻿@model NewPatientViewModel
+@{
+    Layout = null;
+    var doctors = Model.UsersP.ToList();
+    var defaultImg = Url.Content("~/assets/images/users/user-dummy-img.jpg");
+}
+
+<!DOCTYPE html>
+<html lang="es" data-layout="vertical" data-topbar="light" data-sidebar="dark">
+<head>
+    <meta charset="utf-8" />
+    <title>Reserva de Citas | ExpertMed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="~/assets/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
+    <link href="~/assets/css/icons.min.css" rel="stylesheet" type="text/css" />
+    <link href="~/assets/css/app.min.css" rel="stylesheet" type="text/css" />
+
+    <style>
+        body {
+            background-color: #f3f3f9;
+        }
+
+        .doctor-scroll-container {
+            max-height: 350px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #fff;
+            border-radius: 8px;
+            border: 1px solid #e9ebec;
+        }
+
+        .doctor-card-ui {
+            border: 2px solid #eff2f7;
+            border-radius: 12px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .btn-check:checked + .doctor-card-ui {
+            border-color: #405189;
+            background-color: rgba(64, 81, 137, 0.05);
+            box-shadow: 0 4px 12px rgba(64, 81, 137, 0.1);
+        }
+
+        .doctor-card-ui img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .event-slot-available {
+            background: rgba(10, 179, 156, 0.1) !important;
+            border: 1px dashed #0ab39c !important;
+            border-left: 4px solid #0ab39c !important;
+            color: #0ab39c !important;
+            font-weight: 600 !important;
+            cursor: pointer !important;
+        }
+
+        .fc-timegrid-slot {
+            height: 3.5em !important;
+        }
+
+        /* Estilo para días sin disponibilidad */
+        .fc-day-disabled {
+            background-color: #f8f9fa;
+            opacity: 0.6;
+        }
+
+        /* Loader mejorado */
+        .calendar-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container py-5">
+        <form id="mainForm" asp-action="NewPatientA" asp-controller="Patient" method="POST">
+            <input type="hidden" name="SelectedAppointmentDate" id="SelectedAppointmentDate" />
+            <input type="hidden" name="SelectedAppointmentHour" id="SelectedAppointmentHour" />
+
+            <div class="card shadow-lg">
+                <div class="card-header bg-primary py-3">
+                    <h4 class="card-title mb-0 text-white">Agendamiento de Cita</h4>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">1. Seleccione su Médico</label>
+                        <div class="search-box mb-3">
+                            <input type="text" id="doctorSearch" class="form-control bg-light" placeholder="Buscar médico...">
+                            <i class="ri-search-line search-icon"></i>
+                        </div>
+                        <div class="doctor-scroll-container shadow-sm mb-3">
+                            <div id="doctorGrid" class="row g-2">
+                                @foreach (var doc in doctors)
+                                {
+                                    <div class="col-xl-3 col-md-4 col-6 doctor-item"
+                                         data-name="@doc.UsersNames"
+                                         data-search="@doc.UsersNames.ToLower() @doc.UsersSurcenames.ToLower() @doc.SpecialityName.ToLower()">
+                                        <input type="radio" class="btn-check" name="doctorUserId" id="doc-@doc.UsersId" value="@doc.UsersId" required>
+                                        <label class="doctor-card-ui" for="doc-@doc.UsersId">
+                                            <img src="@(!string.IsNullOrEmpty(doc.UsersProfilephoto64) ? $"data:image/png;base64,{doc.UsersProfilephoto64}" : defaultImg)"
+                                                 alt="@doc.UsersNames" />
+                                            <div class="mt-2 fw-bold text-dark text-center small">@doc.UsersNames @doc.UsersSurcenames</div>
+                                            <div class="text-primary smaller">@doc.SpecialityName</div>
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <button type="button" id="btnVerDisponibilidad" class="btn btn-primary w-100 py-2 fs-15 shadow">
+                            <i class="ri-calendar-line me-1"></i> VER DISPONIBILIDAD
+                        </button>
+                    </div>
+
+                    <div id="patientCard" class="card border-dashed" style="display:none;">
+                        <div class="card-header bg-soft-success d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-0 text-success">Datos del Paciente</h5>
+                                <small class="text-muted">Cita: <b id="chosenSlotLabel"></b></small>
+                            </div>
+                            <button type="button" id="btnCambiarHorario" class="btn btn-sm btn-outline-secondary">
+                                <i class="ri-calendar-event-line me-1"></i> Cambiar
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 mb-2">
+                                    <div class="btn-group w-100 shadow-sm">
+                                        <input type="radio" class="btn-check" name="isNewPatient" id="typeNew" value="true" checked>
+                                        <label class="btn btn-outline-primary" for="typeNew">Nuevo Paciente</label>
+                                        <input type="radio" class="btn-check" name="isNewPatient" id="typeExisting" value="false">
+                                        <label class="btn btn-outline-primary" for="typeExisting">Ya tengo cuenta</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label">Identificación*</label>
+                                    <input type="text" class="form-control" name="PatientDocumentnumber" required>
+                                </div>
+                                <div id="sectionNewPatient" class="row g-3 m-0 p-0">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Nombre*</label>
+                                        <input type="text" class="form-control" name="PatientFirstname">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Apellido*</label>
+                                        <input type="text" class="form-control" name="PatientFirstsurname">
+                                    </div>
+                                    <div class="col-md-12">
+                                        <label class="form-label">WhatsApp*</label>
+                                        <input type="tel" class="form-control" name="PatientPhonenumber" placeholder="0999888777">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row mt-4 g-2">
+                                <div class="col-md-12">
+                                    <button type="submit" id="btnConfirmar" class="btn btn-success btn-lg w-100">
+                                        <i class="ri-check-line me-1"></i> CONFIRMAR CITA
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal fade" id="modalCalendar" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white p-3">
+                    <h5 class="modal-title">
+                        <i class="ri-calendar-2-line me-2"></i> Horarios Disponibles
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0 position-relative">
+                    <div id="calendarLoader" class="calendar-loading" style="display:none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                    </div>
+                    <div id="calendar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        let calendarInstance;
+        const urls = {
+            hours: '@Url.Action("GetAvailableHoursEvents", "Appointment")',
+            create: '@Url.Action("CreateAppointmentA", "Appointment")',
+            validate: '@Url.Action("ValidateAppointment", "Appointment")',
+            modify: '@Url.Action("ModifyAppointmentA", "Appointment")'
+        };
+
+        $(document).ready(function () {
+            // Búsqueda de médicos
+            $('#doctorSearch').on('input', function() {
+                const term = $(this).val().toLowerCase();
+                $('.doctor-item').each(function() {
+                    $(this).toggle($(this).data('search').includes(term));
+                });
+            });
+
+            // Toggle de formulario nuevo/existente
+            $('input[name="isNewPatient"]').on('change', function() {
+                const isNew = $(this).val() === 'true';
+                $('#sectionNewPatient').slideToggle(isNew).find('input').prop('required', isNew);
+            });
+
+            // Abrir modal de calendario
+            $('#btnVerDisponibilidad, #btnCambiarHorario').on('click', () => {
+                const doctorId = $('input[name="doctorUserId"]:checked').val();
+                if (!doctorId) {
+                    return Swal.fire('Atención', 'Por favor, seleccione un médico primero.', 'info');
+                }
+                $('#modalCalendar').modal('show');
+            });
+
+            // Inicializar calendario cuando se abre el modal
+            $('#modalCalendar').on('shown.bs.modal', function() {
+                const docId = parseInt($('input[name="doctorUserId"]:checked').val());
+
+                if (calendarInstance) {
+                    calendarInstance.destroy();
+                }
+
+                calendarInstance = new FullCalendar.Calendar(document.getElementById('calendar'), {
+                    initialView: 'timeGridDay',
+                    locale: 'es',
+                    allDaySlot: false,
+                    slotMinTime: '07:00:00',
+                    slotMaxTime: '19:30:00',
+                    height: 'auto',
+                    headerToolbar: {
+                        left: 'prev,next today',
+                        center: 'title',
+                        right: 'timeGridWeek,timeGridDay'
+                    },
+                    buttonText: {
+                        today: 'Hoy',
+                        week: 'Semana',
+                        day: 'Día'
+                    },
+                    slotLabelFormat: {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    },
+                    loading: function(isLoading) {
+                        $('#calendarLoader').toggle(isLoading);
+                    },
+                    events: function(info, successCallback, failureCallback) {
+                        $('#calendarLoader').show();
+
+                        $.ajax({
+                            url: urls.hours,
+                            type: 'GET',
+                            data: {
+                                userId: docId,
+                                start: info.startStr,
+                                end: info.endStr
+                            },
+                            success: function(response) {
+                                $('#calendarLoader').hide();
+
+                                // Manejar respuesta con estructura mejorada
+                                if (response.success && response.events) {
+                                    successCallback(response.events);
+
+                                    // Mostrar mensaje si no hay eventos
+                                    if (response.count === 0) {
+                                        Swal.fire({
+                                            icon: 'info',
+                                            title: 'Sin disponibilidad',
+                                            text: 'No hay horarios disponibles en este rango de fechas. Por favor, intente con otras fechas.',
+                                            timer: 3000
+                                        });
+                                    }
+                                } else {
+                                    // Compatibilidad con respuesta anterior (array directo)
+                                    successCallback(response);
+                                }
+                            },
+                            error: function(xhr, status, error) {
+                                $('#calendarLoader').hide();
+                                console.error('Error al cargar eventos:', error);
+
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Error',
+                                    text: 'No se pudieron cargar los horarios disponibles. Por favor, intente nuevamente.'
+                                });
+
+                                failureCallback(error);
+                            }
+                        });
+                    },
+                    eventClick: function(info) {
+                        const eventDate = info.event.start;
+
+                        // Formatear fecha y hora
+                        const formattedDate = eventDate.toISOString().split('T')[0];
+                        const formattedTime = eventDate.toLocaleTimeString('es-EC', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                        });
+                        const displayDateTime = eventDate.toLocaleString('es-EC', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+
+                        // Guardar valores seleccionados
+                        $('#SelectedAppointmentDate').val(formattedDate);
+                        $('#SelectedAppointmentHour').val(formattedTime);
+                        $('#chosenSlotLabel').text(displayDateTime);
+
+                        // Cerrar modal y mostrar formulario
+                        $('#modalCalendar').modal('hide');
+                        $('#patientCard').fadeIn();
+
+                        // Scroll suave al formulario
+                        $('html, body').animate({
+                            scrollTop: $('#patientCard').offset().top - 20
+                        }, 500);
+                    },
+                    eventContent: function(arg) {
+                        return {
+                            html: '<div class="p-1"><i class="ri-time-line me-1"></i>' + arg.timeText + '</div>'
+                        };
+                    }
+                });
+
+                calendarInstance.render();
+            });
+
+            // Submit del formulario
+            $('#mainForm').on('submit', function(e) {
+                e.preventDefault();
+                procesarFlujo(1);
+            });
+
+            function procesarFlujo(status) {
+                const btn = $('#btnConfirmar');
+                const date = $('#SelectedAppointmentDate').val();
+                const hour = $('#SelectedAppointmentHour').val();
+
+                if (!date || !hour) {
+                    return Swal.fire('Error', 'Por favor, seleccione un horario primero.', 'warning');
+                }
+
+                Swal.fire({
+                    title: 'Procesando...',
+                    text: 'Validando información',
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading()
+                });
+
+                btn.prop('disabled', true);
+
+                $.ajax({
+                    url: $('#mainForm').attr('action'),
+                    type: 'POST',
+                    data: new FormData(document.getElementById('mainForm')),
+                    processData: false,
+                    contentType: false,
+                    success: function(res) {
+                        if (res.success) {
+                            $.get(urls.validate, { date: date, patientId: res.patientId }, function(val) {
+                                if (val.exists && status !== 5) {
+                                    Swal.fire({
+                                        title: 'Cita Existente',
+                                        text: `Ya tiene una cita programada para el ${date} a las ${val.hour}. ¿Desea cambiarla a este nuevo horario?`,
+                                        icon: 'question',
+                                        showCancelButton: true,
+                                        confirmButtonText: 'Sí, Reagendar',
+                                        cancelButtonText: 'No, Mantener'
+                                    }).then(r => {
+                                        if (r.isConfirmed) {
+                                            reagendar(val.appointmentId, res.patientId, status);
+                                        } else {
+                                            btn.prop('disabled', false);
+                                            Swal.close();
+                                        }
+                                    });
+                                } else {
+                                    crearCita(res.patientId, status);
+                                }
+                            }).fail(function() {
+                                btn.prop('disabled', false);
+                                Swal.fire('Error', 'No se pudo validar la cita existente.', 'error');
+                            });
+                        } else {
+                            btn.prop('disabled', false);
+                            Swal.fire('Error', res.message || 'Ocurrió un error al procesar los datos del paciente.', 'error');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        btn.prop('disabled', false);
+                        console.error('Error en procesarFlujo:', error);
+                        Swal.fire('Error', 'No se pudo procesar la solicitud. Por favor, intente nuevamente.', 'error');
+                    }
+                });
+            }
+
+            function reagendar(appId, pId, status) {
+                const docId = parseInt($('input[name="doctorUserId"]:checked').val());
+                const date = $('#SelectedAppointmentDate').val();
+                const hour = $('#SelectedAppointmentHour').val();
+
+                $.ajax({
+                    url: urls.modify,
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        AppointmentId: appId,
+                        AppointmentDate: date,
+                        AppointmentHour: hour,
+                        AppointmentPatientid: pId,
+                        AppointmentModifyuser: docId,
+                        AppointmentStatus: status
+                    }),
+                    success: () => mostrarExito(date, hour),
+                    error: (xhr, status, error) => {
+                        console.error('Error al reagendar:', error);
+                        $('#btnConfirmar').prop('disabled', false);
+                        Swal.fire('Error', 'No se pudo actualizar la cita. Por favor, intente nuevamente.', 'error');
+                    }
+                });
+            }
+
+            function crearCita(pId, status) {
+                const docId = parseInt($('input[name="doctorUserId"]:checked').val());
+                const date = $('#SelectedAppointmentDate').val();
+                const hour = $('#SelectedAppointmentHour').val();
+
+                $.ajax({
+                    url: urls.create,
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        AppointmentDate: date,
+                        AppointmentHour: hour,
+                        AppointmentPatientid: pId,
+                        AppointmentModifyuser: docId,
+                        AppointmentStatus: status
+                    }),
+                    success: () => mostrarExito(date, hour),
+                    error: (xhr, status, error) => {
+                        console.error('Error al crear cita:', error);
+                        $('#btnConfirmar').prop('disabled', false);
+                        Swal.fire('Error', 'No se pudo crear la cita. Por favor, intente nuevamente.', 'error');
+                    }
+                });
+            }
+
+            function mostrarExito(date, hour) {
+                const docName = $('input[name="doctorUserId"]:checked').closest('.doctor-item').data('name');
+                const phone = $('input[name="PatientPhonenumber"]').val();
+
+                const startG = `${date.replace(/-/g, '')}T${hour.replace(/:/g, '')}00`;
+                const gCal = `https://www.google.com/calendar/render?action=TEMPLATE&text=Cita+ExpertMed&dates=${startG}/${startG}&details=Dr.+${docName}`;
+                const waUrl = `https://web.whatsapp.com/send?phone=593${phone.substring(1)}&text=${encodeURIComponent('Confirmo mi cita para el '+date+' a las '+hour+' con Dr. '+docName)}`;
+
+                Swal.fire({
+                    title: '¡Cita Confirmada!',
+                    html: `
+                        <p class="mb-3">Su cita ha sido agendada exitosamente.</p>
+                        <div class="d-grid gap-2">
+                            <a href="${gCal}" target="_blank" class="btn btn-outline-danger">
+                                <i class="ri-calendar-line me-2"></i> Agregar a Google Calendar
+                            </a>
+                            <a href="${waUrl}" target="_blank" class="btn btn-success">
+                                <i class="ri-whatsapp-line me-2"></i> Notificar por WhatsApp
+                            </a>
+                        </div>
+                    `,
+                    icon: 'success',
+                    confirmButtonText: 'Cerrar'
+                }).then(() => location.reload());
+            }
+        });
+    </script>
+</body>
+</html>

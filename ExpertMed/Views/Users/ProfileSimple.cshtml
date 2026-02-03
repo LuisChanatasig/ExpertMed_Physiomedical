@@ -1,0 +1,95 @@
+﻿@{
+    ViewBag.Title = "Profile User";
+    ViewBag.pTitle = "Profile User";
+    ViewBag.pageTitle = "Profile User";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+@using Microsoft.AspNetCore.Http
+@{
+    var usuarioId = ViewContext.HttpContext.Session.GetInt32("UsuarioId");
+    var perfilId = ViewContext.HttpContext.Session.GetInt32("PerfilId");
+    var usuarioNombre = ViewContext.HttpContext.Session.GetString("UsuarioNombre");
+    var usuarioApellido = ViewContext.HttpContext.Session.GetString("UsuarioApellido");
+    var usuarioEspecialidad = ViewContext.HttpContext.Session.GetString("UsuarioEspecialidad");
+    var especialidadId = ViewContext.HttpContext.Session.GetInt32("UsuarioIdEspecialidad");
+    var usuarioEstablecimiento = ViewContext.HttpContext.Session.GetString("UsuarioEstablecimiento");
+    var usuarioDireccion = ViewContext.HttpContext.Session.GetString("UsuarioDireccion");
+    var usuarioTelefono = ViewContext.HttpContext.Session.GetString("UsuarioTelefono");
+    var usuarioEmail = ViewContext.HttpContext.Session.GetString("UsuarioEmail");
+    var usuarioDescripcion = ViewContext.HttpContext.Session.GetString("UsuarioDescripcion");
+    var fotoPerfilBase64 = ViewContext.HttpContext.Session.GetString("UsuarioFotoPerfil");
+    var rutaImagenPorDefecto = Url.Content("~/assets/images/users/multi-user.jpg");
+
+    string fotoPerfilSrc = string.IsNullOrEmpty(fotoPerfilBase64)
+    ? rutaImagenPorDefecto
+    : $"data:image/jpeg;base64,{fotoPerfilBase64}";
+}
+<div class="profile-foreground position-relative mx-n4 mt-n4">
+    <div class="profile-wid-bg">
+        <img src="~/assets/images/profile-bg.jpg" alt="" class="profile-wid-img" />
+    </div>
+</div>
+
+<div class="pt-4 mb-4 mb-lg-3 pb-lg-12">
+    <div class="row g-4 align-items-center">
+        <!-- Foto de perfil -->
+        <div class="col-auto">
+            <img src="@fotoPerfilSrc" alt="Foto de perfil de @usuarioNombre @usuarioApellido" class="img-thumbnail rounded-circle avatar-lg" />
+        </div>
+
+        <!-- Información básica y botón -->
+        <div class="col">
+            <div class="p-2">
+                <h3 class="text-white mb-1">@usuarioNombre @usuarioApellido</h3>
+                <span class="badge bg-primary-subtle text-primary">@usuarioEspecialidad</span>
+                <div class="d-flex flex-wrap align-items-center text-white-50 gap-3 mt-3">
+               
+                    <a href="@Url.Action("UpdateUserP", "Users", new { id = usuarioId })"
+                       class="btn btn-success ms-auto"
+                       aria-label="Editar perfil de  @usuarioNombre @usuarioApellido">
+                        <i class="ri-edit-box-line align-bottom"></i> Editar Perfil
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalles extendidos del usuario -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <section class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Sobre el doctor  @usuarioNombre @usuarioApellido</h5>
+                    <p>@usuarioDescripcion</p>
+
+                    <h5 class="card-title mb-3">Información de contacto</h5>
+                    <div class="table-responsive">
+                        <table class="table table-borderless table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <th class="ps-0" scope="row">Nombre completo:</th>
+                                    <td class="text-muted"> @usuarioNombre @usuarioApellido</td>
+                                </tr>
+                                <tr>
+                                    <th class="ps-0" scope="row">Teléfono:</th>
+                                    <td class="text-muted">@usuarioTelefono</td>
+                                </tr>
+                                <tr>
+                                    <th class="ps-0" scope="row">E-mail:</th>
+                                    <td class="text-muted">@usuarioEmail</td>
+                                </tr>
+                                <tr>
+                                    <th class="ps-0" scope="row">Dirección:</th>
+                                    <td class="text-muted">@usuarioDireccion</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+

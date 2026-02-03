@@ -1,0 +1,519 @@
+﻿using ExpertMed.Models;
+using iText.Commons.Actions.Contexts;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
+using System.Data;
+using System.Numerics;
+
+namespace ExpertMed.Services
+{
+    public class AppointmentService
+    {
+
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ILogger<AppointmentService> _logger;
+        private readonly DbExpertmedContext _dbContext;
+
+        public AppointmentService(IHttpContextAccessor httpContextAccessor, ILogger<AppointmentService> logger, DbExpertmedContext dbContext)
+        {
+            _dbContext = dbContext;
+            _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
+        }
+
+        public class AvailableHour
+        {
+            public TimeSpan AvailableTime { get; set; }
+        }
+
+
+        public async Task<List<AppointmentDTO>> GetAllAppointmentAsync(
+          int userProfile,
+          int? appointmentStatus = null, // Cambiado a opcional para coincidir con la lógica del SP
+          int? userId = null,
+          bool isPaidOnly = false,
+          int? appointmentStatus2 = null)
+        {
+            try
+            {
+                // 1. Ya no necesitamos SetCommandTimeout(120). 
+                // Si el SP tarda más de 30s (default), el problema es de índices, no de tiempo.
+
+                var parameters = new[]
+                {
+            new SqlParameter("@UserProfile", SqlDbType.Int) { Value = userProfile },
+            new SqlParameter("@UserID", SqlDbType.Int) { Value = (object?)userId ?? DBNull.Value },
+            new SqlParameter("@AppointmentStatus", SqlDbType.Int) { Value = (object?)appointmentStatus ?? DBNull.Value },
+            new SqlParameter("@AppointmentStatus2", SqlDbType.Int) { Value = (object?)appointmentStatus2 ?? DBNull.Value },
+            new SqlParameter("@IsPaidOnly", SqlDbType.Bit) { Value = isPaidOnly }
+        };
+
+                // 2. Ejecución directa y eficiente
+                var result = await _dbContext
+                    .AppointmentDTOs
+                    .FromSqlRaw(@"EXEC dbo.sp_ListAllAppointment 
+                            @UserProfile, 
+                            @UserID, 
+                            @AppointmentStatus, 
+                            @AppointmentStatus2, 
+                            @IsPaidOnly",
+                                parameters)
+                    .AsNoTracking() // Esencial: evita que EF Core guarde copias en memoria
+                    .ToListAsync();
+
+                return result;
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(ex, "Error SQL en sp_ListAllAppointment | UserProfile={UserProfile}, UserId={UserId}", userProfile, userId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error general al obtener las citas.");
+                throw;
+            }
+        }
+        /// <summary>
+        /// Obtener horas disponibles por medico
+        /// </summary>
+        /// <param name="userId"></param>
+        /// <param name="date"></param>
+        /// <param name="doctorUserId"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        public List<string> GetAvailableHours(int userId, DateTime date, int? doctorUserId = null)
+        {
+            List<string> availableHours = new List<string>();
+
+            using (SqlConnection conn = new SqlConnection(_dbContext.Database.GetConnectionString()))
+            {
+                try
+                {
+                    conn.Open();
+
+                    using (SqlCommand cmd = new SqlCommand("sp_GetAvailableHours", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+
+                        // Parámetros
+                        cmd.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int)).Value = userId;
+                        cmd.Parameters.Add(new SqlParameter("@Date", SqlDbType.Date)).Value = date;
+
+                        // Parámetro opcional para el ID del doctor (cuando es asistente)
+                        if (doctorUserId.HasValue)
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@DoctorUserId", SqlDbType.Int)).Value = doctorUserId.Value;
+                        }
+                        else
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@DoctorUserId", SqlDbType.Int)).Value = DBNull.Value;
+                        }
+
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            // Verificar si hay errores del SP (cuando usa SELECT ERROR_NUMBER, ERROR_MESSAGE)
+                            if (reader.HasRows)
+                            {
+                                // Verificar si la primera columna es ErrorNumber
+                                if (reader.FieldCount > 1 && reader.GetName(0) == "ErrorNumber")
+                                {
+                                    reader.Read();
+                                    string errorMessage = reader["ErrorMessage"].ToString();
+                                    throw new Exception($"Error en el procedimiento almacenado: {errorMessage}");
+                                }
+
+                                // Si no es error, procesar las horas disponibles
+                                do
+                                {
+                                    while (reader.Read())
+                                    {
+                                        string time = reader["AvailableTime"]?.ToString();
+                                        if (!string.IsNullOrEmpty(time))
+                                        {
+                                            availableHours.Add(time);
+                                        }
+                                    }
+                                } while (reader.NextResult());
+                            }
+                        }
+                    }
+                }
+                catch (SqlException sqlEx)
+                {
+                    // Capturar errores específicos de SQL (RAISERROR del SP)
+                    throw new Exception($"Error de base de datos: {sqlEx.Message}", sqlEx);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Error obteniendo horas disponibles: {ex.Message}", ex);
+                }
+            }
+
+            return availableHours;
+        }
+
+
+        public async Task<List<AvailableOfficeDto>> GetAvailableOfficesAsync(int userId, DateTime date, TimeSpan hour, int? doctorUserId = null)
+        {
+            var result = new List<AvailableOfficeDto>();
+
+            using (var connection = new SqlConnection(_dbContext.Database.GetConnectionString()))
+            using (var command = new SqlCommand("sp_GetAvailableOffices", connection))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+
+                command.Parameters.AddWithValue("@UserId", userId);
+                command.Parameters.AddWithValue("@Date", date.Date);
+                command.Parameters.AddWithValue("@Hour", hour);
+                command.Parameters.AddWithValue("@DoctorUserId", (object?)doctorUserId ?? DBNull.Value);
+
+                await connection.OpenAsync();
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        result.Add(new AvailableOfficeDto
+                        {
+                            MedicalOfficeId = reader.GetInt32(0),
+                            MedicalOfficeName = reader.GetString(1)
+                        });
+                    }
+                }
+            }
+
+            return result;
+        }
+
+
+
+        /// <summary>
+        /// CREAR UNA NUEVA CITA
+        /// </summary>
+        /// <param name="appointmentDto"></param>
+        /// <param name="doctorUserId"></param>
+        /// <returns></returns>
+        /// <exception cref="ApplicationException"></exception>
+
+        public async Task<(bool Success, string Message, int? AppointmentId, bool IsEmergency)> CreateAppointmentAsync(Appointment appointmentDto, int? doctorUserId = null)
+        {
+            using (var connection = new SqlConnection(_dbContext.Database.GetConnectionString()))
+            {
+                await connection.OpenAsync();
+
+                using (var command = new SqlCommand("sp_CreateAppointment", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.AddWithValue("@appointment_createdate", DateTime.Now);
+                    command.Parameters.AddWithValue("@appointment_modifydate", DateTime.Now);
+                    command.Parameters.AddWithValue("@appointment_createuser", appointmentDto.AppointmentCreateuser);
+                    command.Parameters.AddWithValue("@appointment_modifyuser", appointmentDto.AppointmentModifyuser);
+                    command.Parameters.AddWithValue("@appointment_date", appointmentDto.AppointmentDate.Date);
+                    command.Parameters.AddWithValue("@appointment_hour", appointmentDto.AppointmentHour);
+                    command.Parameters.AddWithValue("@appointment_patientid", appointmentDto.AppointmentPatientid);
+                    command.Parameters.AddWithValue(
+                        "@appointment_status",
+                        appointmentDto.AppointmentStatus ?? 1
+                    );
+                    command.Parameters.AddWithValue("@appointment_medicalofficeid", (object?)appointmentDto.AppointmentMedicalofficeid ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@doctor_userid", (object?)doctorUserId ?? DBNull.Value);
+
+                    // Nuevos campos
+                    command.Parameters.AddWithValue("@appointment_insurance_company_id", (object?)appointmentDto.AppointmentInsuranceCompanyId ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@appointment_reason", string.IsNullOrWhiteSpace(appointmentDto.AppointmentReason)
+                        ? DBNull.Value
+                        : appointmentDto.AppointmentReason);
+                    command.Parameters.AddWithValue("@appointment_insurance_auth_code", string.IsNullOrWhiteSpace(appointmentDto.AppointmentInsuranceAuthCode)
+                        ? DBNull.Value
+                        : appointmentDto.AppointmentInsuranceAuthCode);
+
+                    try
+                    {
+                        var result = await command.ExecuteScalarAsync();
+                        var jsonResponse = JsonConvert.DeserializeObject<dynamic>(result?.ToString() ?? "{}");
+
+                        bool success = jsonResponse?.success == 1;
+                        string message = jsonResponse?.message;
+                        int? appointmentId = jsonResponse?.appointmentId;
+                        bool isEmergency = jsonResponse?.esEmergencia == 1;
+
+                        return (success, message, appointmentId, isEmergency);
+                    }
+                    catch (SqlException ex)
+                    {
+                        throw new ApplicationException("Error al ejecutar el SP de cita: " + ex.Message, ex);
+                    }
+                }
+            }
+        }
+
+
+        /// <summary>
+        /// Obtener cita por ID
+        /// </summary>
+        /// <param name="appointmentId"></param>
+        /// <param name="userProfile"></param>
+        /// <returns></returns>
+
+
+        public Appointment GetAppointmentById(int appointmentId, int userProfile)
+        {
+            Appointment appointment = null;
+
+            using (var connection = new SqlConnection(_dbContext.Database.GetConnectionString()))
+            using (var command = new SqlCommand("sp_GetAppointmentById", connection))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@appointment_id", appointmentId);
+                command.Parameters.AddWithValue("@UserProfile", userProfile);
+
+                connection.Open();
+                using (var reader = command.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        appointment = new Appointment
+                        {
+                            AppointmentId = reader.GetInt32(reader.GetOrdinal("appointment_id")),
+                            AppointmentPatientid = reader.GetInt32(reader.GetOrdinal("appointment_patientid")),
+                            AppointmentStatus = reader.GetInt32(reader.GetOrdinal("appointment_status")),
+                            AppointmentDate = reader.GetDateTime(reader.GetOrdinal("appointment_date")),
+                            AppointmentHour = TimeOnly.FromTimeSpan(reader.GetTimeSpan(reader.GetOrdinal("appointment_hour"))),
+                            AppointmentConsultationid = !reader.IsDBNull(reader.GetOrdinal("appointment_consultationid"))
+                                ? reader.GetInt32(reader.GetOrdinal("appointment_consultationid"))
+                                : (int?)null,
+                            AppointmentMedicalofficeid = !reader.IsDBNull(reader.GetOrdinal("appointment_medicalofficeid"))
+                                ? reader.GetInt32(reader.GetOrdinal("appointment_medicalofficeid"))
+                                : (int?)null,
+                            AppointmentReason = !reader.IsDBNull(reader.GetOrdinal("appointment_reason"))
+        ? reader.GetString(reader.GetOrdinal("appointment_reason"))
+        : string.Empty,
+                            AppointmentInsuranceCompanyId = !reader.IsDBNull(reader.GetOrdinal("appointment_insurance_company_id"))
+        ? reader.GetInt32(reader.GetOrdinal("appointment_insurance_company_id"))
+        : (int?)null,
+                            AppointmentPaymentStatus = !reader.IsDBNull(reader.GetOrdinal("appointment_payment_status"))
+        ? reader.GetInt32(reader.GetOrdinal("appointment_payment_status"))
+        : (int?)null,
+
+                        };
+
+                        if ((userProfile == 3 || userProfile == 4 || userProfile == 8) && !reader.IsDBNull(reader.GetOrdinal("DoctorUserId")))
+                        {
+                            appointment.DoctorUserId = reader.GetInt32(reader.GetOrdinal("DoctorUserId"));
+                        }
+                    }
+                }
+            }
+
+            return appointment;
+        }
+
+        /// <summary>
+        /// MODIFICAR UNA CITA
+        /// </summary>
+        /// <param name="appointmentDto"></param>
+        /// <returns></returns>
+        /// <exception cref="ApplicationException"></exception>
+        public async Task ModifyAppointmentAsync(Appointment appointmentDto)
+        {
+            using var connection = new SqlConnection(_dbContext.Database.GetConnectionString());
+            await connection.OpenAsync();
+
+            using var command = new SqlCommand("sp_UpdateAppointment", connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            // Parámetros obligatorios
+            command.Parameters.AddWithValue("@appointment_id", appointmentDto.AppointmentId);
+            command.Parameters.AddWithValue("@appointment_modifydate", DateTime.Now);
+            command.Parameters.AddWithValue("@appointment_modifyuser", appointmentDto.AppointmentModifyuser);
+            command.Parameters.AddWithValue("@appointment_date", appointmentDto.AppointmentDate);
+            command.Parameters.AddWithValue("@appointment_hour", appointmentDto.AppointmentHour);
+            command.Parameters.AddWithValue("@appointment_patientid", appointmentDto.AppointmentPatientid);
+            command.Parameters.AddWithValue("@appointment_status", appointmentDto.AppointmentStatus);
+
+            // Consultorio (puede ser NULL)
+            command.Parameters.AddWithValue(
+                "@appointment_medicalofficeid",
+                appointmentDto.AppointmentMedicalofficeid.HasValue
+                    ? (object)appointmentDto.AppointmentMedicalofficeid.Value
+                    : DBNull.Value
+            );
+
+            // Médico asignado (puede ser NULL)
+            command.Parameters.AddWithValue(
+       "@doctor_userid",
+       appointmentDto.DoctorUserId != 0
+           ? (object)appointmentDto.DoctorUserId
+           : DBNull.Value
+   );
+
+            // Aseguradora (puede ser NULL)
+            command.Parameters.AddWithValue(
+                "@appointment_insurance_company_id",
+                appointmentDto.AppointmentInsuranceCompanyId.HasValue
+                    ? (object)appointmentDto.AppointmentInsuranceCompanyId.Value
+                    : DBNull.Value
+            );
+
+            // Código de autorización (puede ser NULL o cadena vacía)
+            command.Parameters.AddWithValue(
+                "@appointment_insurance_auth_code",
+                !string.IsNullOrWhiteSpace(appointmentDto.AppointmentInsuranceAuthCode)
+                    ? (object)appointmentDto.AppointmentInsuranceAuthCode
+                    : DBNull.Value
+            );
+
+            // Motivo de la cita (puede ser NULL o cadena vacía)
+            command.Parameters.AddWithValue(
+                "@appointment_reason",
+                !string.IsNullOrWhiteSpace(appointmentDto.AppointmentReason)
+                    ? (object)appointmentDto.AppointmentReason
+                    : DBNull.Value
+            );
+
+            try
+            {
+                await command.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex)
+            {
+                // Aquí podrías mapear códigos de error específicos del SP a mensajes más amigables
+                throw new ApplicationException($"Error al modificar la cita (ID {appointmentDto.AppointmentId}): {ex.Message}", ex);
+            }
+        }
+
+
+        /// <summary>
+        /// Cancelar una Cita
+        /// </summary>
+        /// <param name="appointmentId"></param>
+        /// <param name="modifiedBy"></param>
+        public void DesactivateAppointment(int appointmentId, int modifiedBy)
+        {
+            using (SqlConnection connection = new SqlConnection(_dbContext.Database.GetConnectionString()))
+            {
+                try
+                {
+                    connection.Open();
+
+                    // Crear el comando para ejecutar el SP
+                    using (SqlCommand cmd = new SqlCommand("sp_DesactiveAppointment", connection))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+
+                        // Agregar parámetros
+                        cmd.Parameters.Add(new SqlParameter("@AppointmentId", SqlDbType.Int)).Value = appointmentId;
+                        cmd.Parameters.Add(new SqlParameter("@ModifiedBy", SqlDbType.Int)).Value = modifiedBy;
+
+                        // Ejecutar el procedimiento almacenado
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Manejo de errores
+                    Console.WriteLine($"Error al desactivar la cita: {ex.Message}");
+                }
+            }
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="createUserId"></param>
+        /// <returns></returns>
+        //public async Task<List<AppointmentViewModel>> GetAppointmentsForTodayAsync(int createUserId)
+        //{
+        //    var appointments = await _dbContext.Set<AppointmentViewModel>()
+        //         .FromSqlInterpolated($"EXEC sp_getAppointmentsForToday @CreateUser = {createUserId}")
+        //         .ToListAsync();
+
+        //    return appointments;
+        //}
+
+        //metodos para citas desde fuera
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="patientId"></param>
+        /// <param name="appointmentDate"></param>
+        /// <returns></returns>
+        public Appointment GetAppointmentByPatientAndDay(int patientId, DateTime appointmentDate)
+        {
+            using (SqlConnection connection = new SqlConnection(_dbContext.Database.GetConnectionString()))
+            {
+                using (SqlCommand command = new SqlCommand("sp_getAppointmentoByPatientandDay", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@PatientID", patientId);
+                    command.Parameters.AddWithValue("@AppointmentDate", appointmentDate);
+
+                    connection.Open();
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            // Mapea los datos a tu modelo. Aquí se asume que la columna se llama "AppointmentID".
+                            var appointment = new Appointment
+                            {
+                                AppointmentId = Convert.ToInt32(reader["appointment_id"])
+                                // Mapea el resto de propiedades según necesites.
+                            };
+                            return appointment;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        public async Task<string> InsertVitalSignsAsync(VitalSignInputModel model)
+        {
+            try
+            {
+                var appointmentIdParam = new SqlParameter("@appointment_id", model.AppointmentId);
+                var patientIdParam = new SqlParameter("@patient_id", model.PatientId);
+                var temperatureParam = new SqlParameter("@temperature", model.Temperature);
+                var respiratoryRateParam = new SqlParameter("@respiratory_rate", model.RespiratoryRate);
+                var bpAsParam = new SqlParameter("@blood_pressureAS", model.BloodPressureAS ?? (object)DBNull.Value);
+                var bpDisParam = new SqlParameter("@blood_pressureDIS", model.BloodPressureDIS ?? (object)DBNull.Value);
+                var pulseParam = new SqlParameter("@pulse", model.Pulse ?? (object)DBNull.Value);
+                var weightParam = new SqlParameter("@weight", model.Weight ?? (object)DBNull.Value);
+                var sizeParam = new SqlParameter("@size", model.Size ?? (object)DBNull.Value);
+
+                // Campos nuevos
+                var bmiParam = new SqlParameter("@bmi", (object?)model.Bmi ?? DBNull.Value);
+                var abdominalPerimeterParam = new SqlParameter("@abdominal_perimeter", (object?)model.AbdominalPerimeter ?? DBNull.Value);
+                var capillaryHemoglobinParam = new SqlParameter("@capillary_hemoglobin", (object?)model.CapillaryHemoglobin ?? DBNull.Value);
+                var capillaryGlucoseParam = new SqlParameter("@capillary_glucose", (object?)model.CapillaryGlucose ?? DBNull.Value);
+                var spo2Param = new SqlParameter("@spo2", (object?)model.Spo2 ?? DBNull.Value);
+
+                var createdByParam = new SqlParameter("@created_by", model.CreatedBy);
+
+                await _dbContext.Database.ExecuteSqlRawAsync(
+                    "EXEC sp_InsertVitalSigns @appointment_id, @patient_id, @temperature, @respiratory_rate, " +
+                    "@blood_pressureAS, @blood_pressureDIS, @pulse, @weight, @size, " +
+                    "@bmi, @abdominal_perimeter, @capillary_hemoglobin, @capillary_glucose, @spo2, @created_by",
+                    appointmentIdParam, patientIdParam, temperatureParam, respiratoryRateParam,
+                    bpAsParam, bpDisParam, pulseParam, weightParam, sizeParam,
+                    bmiParam, abdominalPerimeterParam, capillaryHemoglobinParam, capillaryGlucoseParam, spo2Param,
+                    createdByParam
+                );
+
+                return "Signos vitales insertados correctamente.";
+            }
+            catch (SqlException ex)
+            {
+                return $"Error SQL: {ex.Message}";
+            }
+            catch (Exception ex)
+            {
+                return $"Error general: {ex.Message}";
+            }
+        }
+
+    }
+}

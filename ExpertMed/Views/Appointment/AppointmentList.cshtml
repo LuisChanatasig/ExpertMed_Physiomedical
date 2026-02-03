@@ -1,0 +1,740 @@
+﻿@using Microsoft.AspNetCore.Http
+@model ExpertMed.Models.AppointmentListViewModel
+@{
+    ViewData["Title"] = "Listado De citas";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var successMessage = TempData["SuccessMessage"] as string;
+    var errorMessage = TempData["ErrorMessage"] as string;
+    var usuarioId = ViewContext.HttpContext.Session.GetInt32("UsuarioId");
+    var perfilId = ViewContext.HttpContext.Session.GetInt32("PerfilId");
+}
+
+@section styles {
+    <!--datatable css-->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" />
+    <!--datatable responsive css-->
+    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.2.9/css/responsive.bootstrap.min.css" />
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.2.2/css/buttons.dataTables.min.css">
+
+    <style>
+        /* Cabecera adaptable */
+        .card-header.d-flex {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        /* Collapse de filtros */
+        #filterCollapse .btn-group {
+            flex-wrap: wrap;
+        }
+
+        /* Tabla responsive */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        /* Offcanvas y modales */
+        .offcanvas-end {
+            z-index: 1060 !important;
+        }
+
+        .modal-backdrop.show {
+            z-index: 1050 !important;
+        }
+
+        /* Consultorios cards */
+        .consultorio-card {
+            cursor: pointer;
+            position: relative;
+        }
+
+            .consultorio-card .checkmark {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                display: none;
+            }
+
+            .consultorio-card.selected .checkmark {
+                display: block;
+            }
+    </style>
+}
+
+
+
+<div class="row">
+    <div class="col-lg-12">
+        @if (TempData["Error"] != null)
+        {
+            <div class="alert alert-danger">@TempData["Error"]</div>
+        }
+        <div class="card">
+            <div class="card-body">
+                <div class="card-header d-flex justify-content-between align-items-start align-items-md-center">
+                    <h5 class="card-title mb-0">Lista de citas</h5>
+                    <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse">
+                        <i class="mdi mdi-filter-variant"></i> Filtros
+                    </button>
+                </div>
+
+                <div class="collapse mb-3" id="filterCollapse">
+                    <div class="card card-body p-2">
+                        <div class="btn-group flex-wrap w-100" role="group">
+                            @{
+                                // Obtener los valores actuales de los estados desde el ViewBag
+                                int? currentStatus1 = ViewBag.CurrentStatus;
+                                int? currentStatus2 = ViewBag.CurrentStatus2;
+                                bool isPaid = ViewBag.IsPaidOnly == true; // Asegúrate de que ViewBag.IsPaidOnly sea bool
+                            }
+
+                            @* Botón para "Activas y Emergencias" - Este será el predeterminado. *@
+                            @{
+                                bool isActiveAndEmergencies = (currentStatus1 == 1 && currentStatus2 == 5 && !isPaid);
+                            }
+                            <button class="btn btn-soft-primary @(isActiveAndEmergencies ? "active" : "")"
+                                    onclick="filterAppointments(1, false, 5)">
+                                <i class="mdi mdi-clipboard-list-outline"></i> Activas y Emergencias
+                            </button>
+
+                            @* Ocultamos o eliminamos los botones individuales de "Activas" y "Emergencias" * /
+                            @* Puedes eliminarlos completamente si no los necesitas, o mantenerlos comentados como referencia. *@
+                            @*
+                            @foreach (var estado in new[] {
+                                (1, "Activas", "btn-soft-warning"), // Este se oculta/elimina
+                                (5, "EMERGENCIAS", "bg-danger text-white fw-bold text-uppercase") // Este se oculta/elimina
+                            })
+                            {
+                                <button class="btn @estado.Item3"
+                                        onclick="filterAppointments(@estado.Item1)">
+                                    @estado.Item2
+                                </button>
+                            }
+                            *@
+
+                            @* Mantendremos los otros estados si son necesarios individualmente *@
+                            @foreach (var estado in new[] {
+                                                        (2, "Canceladas", "btn-soft-danger"),
+                                                        (3, "Seguimiento", "btn-soft-info"),
+                                                        (4, "Finalizadas", "btn-soft-dark") })
+                            {
+                                bool isActive = (currentStatus1 == estado.Item1 && currentStatus2 == null && !isPaid);
+                                <button class="btn @estado.Item3 @(isActive ? "active" : "")"
+                                        onclick="filterAppointments(@estado.Item1)">
+                                    @estado.Item2
+                                </button>
+                            }
+
+                            @* Botón para "Todas" (si -1 es para ignorar status) *@
+                            @{
+                                bool isAllActive = (currentStatus1 == -1 && currentStatus2 == null && !isPaid);
+                            }
+                            <button class="btn btn-outline-secondary @(isAllActive ? "active" : "")"
+                                    onclick="filterAppointments(-1)">
+                                <i class="mdi mdi-format-list-bulleted"></i> Todas
+                            </button>
+
+                            <button class="btn btn-soft-success @(isPaid ? "active" : "")"
+                                    onclick="filterAppointments(-1, true)">
+                                <i class="mdi mdi-cash-check"></i> Pagadas
+                            </button>
+                            <div class="card card-body p-2 mt-2">
+                                <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2">
+                                    <!-- Botones rápidos -->
+                                    <div class="btn-group flex-wrap">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="btnHoy">
+                                            <i class="mdi mdi-calendar-today"></i> Hoy
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="btnSemana">
+                                            <i class="mdi mdi-calendar-week"></i> Esta semana
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="btnMes">
+                                            <i class="mdi mdi-calendar-month"></i> Este mes
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="btnAnio">
+                                            <i class="mdi mdi-calendar"></i> Este año
+                                        </button>
+                                    </div>
+
+                                    <!-- Rango personalizado -->
+                                    <div class="d-flex flex-wrap align-items-end gap-2">
+                                        <div>
+                                            <label class="form-label mb-1">Desde</label>
+                                            <input type="date" class="form-control form-control-sm" id="fDesdeFecha" />
+                                        </div>
+                                        <div>
+                                            <label class="form-label mb-1">Hasta</label>
+                                            <input type="date" class="form-control form-control-sm" id="fHastaFecha" />
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button type="button" class="btn btn-soft-success btn-sm" id="btnAplicarRango">
+                                                <i class="mdi mdi-check"></i> Aplicar
+                                            </button>
+                                            <button type="button" class="btn btn-soft-secondary btn-sm" id="btnLimpiarRango">
+                                                <i class="mdi mdi-close"></i> Limpiar
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Estado del filtro -->
+                                    <div class="ms-md-auto">
+                                        <span class="badge bg-soft-info text-dark" id="lblRangoActivo" style="display:none"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+
+                    </div>
+                </div>
+
+                <table id="appointmentTable" class="table nowrap dt-responsive align-middle table-hover table-bordered" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th hidden>ID</th>
+                            <th hidden>ID PATIENT</th>
+                            @* Asegúrate de que perfilId esté definido, probablemente desde ViewBag o un modelo *@
+                            <th>Consultorio</th>
+                            <th>Fecha </th>
+                            <th>Hora</th>
+
+                            <th>Tipo de paciente</th>
+                            @if (perfilId == 1 || perfilId == 3 || perfilId == 4 || perfilId == 8)
+                            {
+                                <th>Nombre del médico</th>
+                            }
+                            <th>Actividad</th>
+                            <th>Especialidad</th>
+                            <th>Pagado</th>
+                            <th>Paciente</th>
+                            <th>Valor a facturar</th>
+                            <th>Metodo de pago</th>
+
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var appt in Model.Appointments)
+                        {
+                            <tr>
+                                <td hidden>@appt.AppointmentId</td>
+                                <td hidden>@appt.AppointmentPatientId</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(appt.MedicalOfficeName))
+                                    {
+                                        <span class="badge bg-success text-uppercase">
+                                            <i class="mdi mdi-hospital-building"></i>
+                                            @appt.MedicalOfficeName
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Sin asignar</span>
+                                    }
+                                </td>
+
+                                <td>
+                                    @appt.AppointmentDate.ToString("dd/MM/yyyy")
+                                </td>
+                                <td>
+                                    @(DateTime.Today.Add(appt.AppointmentHour).ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture))
+                                </td>
+                                <td>@appt.PatientInsuranceName</td>
+                                @if (perfilId == 1 || perfilId == 3 || perfilId == 4 || perfilId == 8)
+                                {
+                                    <td>@(appt.DoctorName)</td>
+                                }
+                                <td>
+                                    @if (!string.IsNullOrEmpty(appt.AppointmentReason))
+                                    {
+                                        @appt.AppointmentReason
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Sin Actividad Asignada</span>
+                                    }
+                                </td>
+
+                                <td>@appt.SpecialtyName</td>
+
+                                <td>
+                                    @{
+                                        var pagoText = appt.AppointmentPaymentStatus == 1 ? "Pagada" : "No pagada";
+                                        var pagoCls = appt.AppointmentPaymentStatus == 1
+                                        ? "bg-success text-white"
+                                        : "bg-secondary";
+                                    }
+                                    <span class="badge @pagoCls">@pagoText</span>
+                                </td>
+
+                                <td>@appt.PatientName</td>
+                                <td>@appt.AmountToBill</td>
+                                <td>@appt.PaymentMethod</td>
+                                <td>
+                                    @{
+                                        var (cls, txt) = appt.AppointmentStatus switch
+                                        {
+                                            1 => ("bg-warning", "Activa"),
+                                            2 => ("bg-danger", "Cancelada"),
+                                            3 => ("bg-info", "Seguimiento"),
+                                            4 => ("bg-dark", "Finalizada"),
+                                            5 => ("bg-danger text-white fw-bold text-uppercase", "Emergencia"),
+                                            _ => ("bg-secondary", "Desconocido")
+                                        };
+                                    }
+                                    <span class="badge @cls">@txt</span>
+                                </td>
+
+                                <td>
+                                    <div class="d-flex gap-1">
+                                        @if (appt.AppointmentStatus == 4 && appt.AppointmentPaymentStatus == 0)
+                                        {
+                                            <button class="btn btn-sm btn-soft-success"
+                                                    onclick="setAppointmentData(@appt.AppointmentId, @appt.AppointmentPatientId); payAppointment();">
+                                                <i class="ri-money-dollar-circle-line"></i> Pagar
+                                            </button>
+                                        }
+
+                                        @* NUEVO BOTÓN: Pagar Laboratorio directamente desde la fila *@
+                                        @if (appt.HasLaboratories && perfilId != 2)
+                                        {
+                                            <button class="btn btn-sm btn-soft-warning" title="Pagar Laboratorios"
+                                                    onclick="setAppointmentData(@appt.AppointmentId, @appt.AppointmentPatientId); AppointmentManager.payLaboratory();">
+                                                <i class="ri-flask-line"></i> Lab.
+                                            </button>
+                                        }
+
+                                        @if (appt.AppointmentStatus == 2 || (appt.AppointmentStatus == 4 && appt.AppointmentPaymentStatus == 1))
+                                        {
+                                            <button class="btn btn-sm btn-soft-secondary" disabled>
+                                                <i class="ri-edit-line"></i> Revisar
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-soft-info"
+                                                    onclick="openOptionModal(@appt.AppointmentId, @appt.AppointmentStatus, @appt.AppointmentPatientId)">
+                                                <i class="ri-edit-line"></i> Revisar
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+
+
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal fade" id="optionModal" tabindex="-1" aria-labelledby="optionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <input type="hidden" id="appointmentIdInput" />
+            <input type="hidden" id="appointmentStatus" />
+            <input type="hidden" id="appointmentPatientId" />
+            <input type="hidden" id="appointmentPaymentStatus" />
+            <input type="hidden" id="hasLaboratoriesInput" /> <input type="hidden" id="perfilIdInput" value="@perfilId" />
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="optionModalLabel">
+                    ¿Qué desea hacer con esta cita?
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-4" id="rescheduleCol">
+                        <button class="btn btn-soft-info btn-sm w-100" onclick="AppointmentManager.openRescheduleModal()">
+                            <i class="ri-user-smile-line"></i> Reprogramar
+                        </button>
+                    </div>
+                    <div class="col-4" id="cancelCol">
+                        <button class="btn btn-soft-danger btn-sm w-100" onclick="AppointmentManager.cancelAppointment()">
+                            <i class="ri-error-warning-fill"></i> Cancelar
+                        </button>
+                    </div>
+
+                   @*  <div class="col-4" id="startConsultCol">
+                        <button class="btn btn-soft-dark btn-sm w-100" onclick="AppointmentManager.startConsultation()">
+                            <i class="las la-file-medical-alt"></i> Empezar Consulta
+                        </button>
+                    </div> *@
+              @*       <div class="col-4" id="startFollowupCol">
+                        <button class="btn btn-soft-dark btn-sm w-100" onclick="AppointmentManager.startFollowupConsultation()">
+                            <i class="las la-file-medical-alt"></i> Seguimiento
+                        </button>
+                    </div> *@
+
+                    <div class="col-4" id="reminderCol">
+                        <button class="btn btn-soft-success btn-sm w-100" onclick="AppointmentManager.sendReminder()">
+                            <i class="ri-whatsapp-fill"></i> Recordatorio
+                        </button>
+                    </div>
+
+                    @if (perfilId != 2)
+                    {
+                        <div class="col-4" id="payCol" style="display: none;">
+                            <button class="btn btn-soft-success btn-sm w-100" onclick="AppointmentManager.payAppointment()">
+                                <i class="ri-secure-payment-line"></i> Pagar cita
+                            </button>
+                        </div>
+
+                        <div class="col-4" id="payLaboratoryCol" style="display: none;">
+                            <button class="btn btn-soft-warning btn-sm w-100" onclick="AppointmentManager.payLaboratory()">
+                                <i class="ri-flask-line"></i> Pagar Lab.
+                            </button>
+                        </div>
+@* 
+                        <div class="col-4" id="vitalSignsCol">
+                            <button class="btn btn-soft-primary btn-sm w-100"
+                                    data-bs-toggle="offcanvas"
+                                    data-bs-target="#vitalSignsCanvas"
+                                    onclick="AppointmentManager.prepareVitalSigns()">
+                                <i class="ri-heart-pulse-line"></i> Signos Vitales
+                            </button>
+                        </div> *@
+                    }
+
+                    <div class="col-4" id="viewHistoryCol">
+                        <button class="btn btn-soft-primary btn-sm w-100" onclick="AppointmentManager.viewPatientHistory()">
+                            <i class="ri-history-line"></i> Ver historial
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Agendar/Editar Cita -->
+<!-- Modal Agendar Cita con todos los campos requeridos -->
+<div class="modal flip" id="appointmentModalgrid" tabindex="-1" aria-labelledby="appointmentModalgridLabel">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <!-- Cabecera -->
+            <div class="modal-header">
+                <h5 class="modal-title" id="appointmentModalgridLabel">Agendar Cita</h5>
+                <span>Todos los campos son requeridos</span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <!-- Cuerpo del modal -->
+            <div class="modal-body">
+                <form class="row g-3 needs-validation" novalidate name="formData">
+
+                    <!-- Selección de médico (visible sólo para ciertos perfiles) -->
+                    @if (perfilId == 3 || perfilId == 1 || perfilId == 4 || perfilId == 8)
+                    {
+                        <div class="col-xxl-6">
+                            <div class="mb-3">
+                                <label for="doctorUserId" class="form-label">Seleccionar médico asignado</label>
+                                <select class="form-control" id="doctorUserId" name="DoctorUserId" data-choices data-choices-sorting-false>
+                                    <option value="">Seleccione</option>
+                                    @foreach (var doctor in Model.Users)
+                                    {
+                                        <option value="@doctor.UsersId">
+                                            @doctor.UsersSurcenames @doctor.UsersNames - @doctor.SpecialityName
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- ID del paciente (oculto) -->
+                    <div class="col-xxl-6" hidden>
+                        <label for="patientId" class="form-label">Patient Id</label>
+                        <input type="number" class="form-control" id="patientId" name="AppointmentPatientid"
+                               value="@(Model.Patient?.PatientId ?? 0)" required>
+                    </div>
+
+                    <!-- Estado de la cita (oculto y siempre 1 = agendada) -->
+                    <input type="hidden" id="appointmentStatus" name="AppointmentStatus" value="1" />
+
+                    <!-- ID de la cita (para edición) -->
+                    <input type="hidden" id="appointment" name="AppointmentId" />
+
+                    <!-- Fecha -->
+                    <div class="col-xxl-6">
+                        <label for="selectedDate" class="form-label">Seleccione la fecha</label>
+                        <input type="date" class="form-control" id="selectedDate" name="selectedDate" required>
+                    </div>
+
+                    <!-- Hora -->
+                    <div class="col-xxl-6 d-flex align-items-end gap-2">
+                        <div class="w-100">
+                            <label for="appointmentTime" class="form-label">Hora seleccionada</label>
+                            <input type="time" class="form-control" id="appointmentTime" name="appointmentTime"
+                                   readonly required>
+                        </div>
+                        <button type="button" class="btn btn-soft-info mt-auto" id="viewHoursButton" style="height: 40px;">
+                            <i class="ri-eye-fill"></i> Ver horas
+                        </button>
+                    </div>
+
+                    <!-- Consultorios disponibles (oculto) -->
+                    <div class="col-xxl-12 mt-3" hidden>
+                        <label class="form-label">Consultorios disponibles</label>
+                        <div id="consultoriosContainer" class="row row-cols-1 row-cols-md-2 g-3"></div>
+                        <input type="hidden" id="AppointmentMedicalofficeid" name="AppointmentMedicalofficeid" />
+                    </div>
+
+                    <!-- Motivo de la cita -->
+                    <div class="col-xxl-12">
+                        <label for="appointmentReason" class="form-label">Motivo de la cita</label>
+                        <textarea class="form-control" id="appointmentReason" name="appointmentReason"
+                                  rows="2" required
+                                  placeholder="Describa el motivo de la cita..."></textarea>
+                        <div class="invalid-feedback">
+                            POR FAVOR ESTE CAMPO ES REQUERIDO
+                        </div>
+                    </div>
+
+                    <!-- Selección de aseguradora -->
+                    <div class="col-xxl-12">
+                        <label for="appointmentInsuranceCompanyId" class="form-label">Aseguradora</label>
+                        <select class="form-control" id="appointmentInsuranceCompanyId"
+                                name="appointmentInsuranceCompanyId" required>
+                            <option value="">
+                                Seleccione aseguradora (si aplica), en caso de que no coloque Ninguno
+                            </option>
+                            @foreach (var aseguradora in Model.InsuranceCompanies)
+                            {
+                                <option value="@aseguradora.InsuranceCompanyId">
+                                    @aseguradora.InsuranceCompanyName
+                                </option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- Código de autorización de la aseguradora -->
+                    <div class="col-xxl-12">
+                        <label for="appointmentInsuranceAuthCode" class="form-label">
+                            Código autorización aseguradora
+                        </label>
+                        <input type="text" class="form-control" id="appointmentInsuranceAuthCode"
+                               name="appointmentInsuranceAuthCode" required
+                               placeholder="Escriba el código de autorización">
+                        <span>En caso de no tener colocar 0</span>
+                        <div class="invalid-feedback">
+                            POR FAVOR ESTE CAMPO ES REQUERIDO
+                        </div>
+                    </div>
+
+                    <!-- Botón de confirmar -->
+                    <div class="col-12 text-end">
+                        <button type="button" class="btn btn-primary" id="confirmAppointmentBtn" disabled>
+                            <i class="ri-check-line"></i> Confirmar cita
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Modal Horas Disponibles -->
+<div class="modal fade" id="hoursModalgrid" tabindex="-1" aria-labelledby="hoursModalgridLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="hoursModalgridLabel">Horas Disponibles</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="availableHoursContainer" class="d-flex flex-wrap gap-2 justify-content-center"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-light" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- OFFCANVAS Signos Vitales -->
+<div class="offcanvas offcanvas-end" id="vitalSignsCanvas" tabindex="-1" aria-labelledby="vitalSignsCanvasLabel">
+    <div class="offcanvas-header">
+        <h5 id="vitalSignsCanvasLabel">Registro de Signos Vitales</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body">
+        <div class="alert alert-info"><strong>Use “·” para decimales</strong></div>
+        <form id="vitalSignsForm">
+            <input type="hidden" id="vsAppointmentId" />
+            <input type="hidden" id="vsPatientId" />
+            <div class="row g-3">
+
+                <div class="col-6">
+                    <label class="form-label">Temperatura °C</label>
+                    <input type="number" step="0.1" class="form-control" id="temperature" required>
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Frecuencia respiratoria</label>
+                    <input type="number" class="form-control" id="respiratoryRate" required>
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Presión Arterial</label>
+                    <input type="text" class="form-control" id="bloodPressure" placeholder="046/123" required>
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Pulso</label>
+                    <input type="number" class="form-control" id="heartRate" required>
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Peso (kg)</label>
+                    <input type="number" step="0.1" class="form-control" id="weight" required>
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Altura(m)</label>
+                    <input type="number" class="form-control" id="height" required>
+                </div>
+
+                <!-- NUEVOS CAMPOS -->
+                <div class="col-6">
+                    <label class="form-label">IMC (Kg/m²)</label>
+                    <input type="number" step="0.1" class="form-control" id="bmi" readonly>
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Perímetro Abdominal (cm)</label>
+                    <input type="number" step="0.1" class="form-control" id="abdominalPerimeter">
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Hemoglobina Capilar (g/dl)</label>
+                    <input type="number" step="0.1" class="form-control" id="capillaryHemoglobin">
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Glucosa Capilar (mg/dl)</label>
+                    <input type="number" step="0.1" class="form-control" id="capillaryGlucose">
+                </div>
+
+                <div class="col-6">
+                    <label class="form-label">Pulsioximetría (%)</label>
+                    <input type="number" step="0.1" class="form-control" id="spo2">
+                </div>
+
+            </div>
+
+            <button type="button" class="btn btn-primary w-100 mt-3"
+                    onclick="VitalSignsManager.submit()">
+                Guardar Signos
+            </button>
+        </form>
+    </div>
+</div>
+
+
+@section scripts {
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"
+            integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+
+    <!-- DataTables -->
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/responsive/2.2.9/js/dataTables.responsive.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.2.2/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.html5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.print.min.js"></script>
+
+    <!-- Export libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+
+    <!-- Variables del servidor (deben estar antes de los módulos) -->
+    <script>
+        // Variables inyectadas desde el servidor
+        const perfilId = @perfilId;
+        const usuarioId = @usuarioId;
+    </script>
+
+    <!-- Módulos de la aplicación (en orden de dependencia) -->
+    <script src="~/js/appointments/config.js"></script>
+    <script src="~/js/appointments/helpers.js"></script>
+    <script src="~/js/appointments/api.js"></script>
+    <script src="~/js/appointments/date-filter.js"></script>
+    <script src="~/js/appointments/datatable-init.js"></script>
+    <script src="~/js/appointments/schedule-manager.js"></script>
+    <script src="~/js/appointments/vital-signs.js"></script>
+    <script src="~/js/appointments/appointment-manager.js"></script>
+    <script src="~/js/appointments/appointment-list-main.js"></script>
+
+    <!-- Configuración específica de esta vista -->
+    <script>
+        // Sobrescribir endpoints con URLs reales del servidor
+        AppConfig.ENDPOINTS = {
+            APPOINTMENT_GET_BY_ID: '@Url.Action("AppointmentGetById", "Appointment")',
+            APPOINTMENT_LIST: '@Url.Action("AppointmentList", "Appointment")',
+            MODIFY_APPOINTMENT: '@Url.Action("ModifyAppointment", "Appointment")',
+            DESACTIVATE_APPOINTMENT: '@Url.Action("DesactivateAppointment", "Appointment")',
+            GET_AVAILABLE_OFFICES: '@Url.Action("GetAvailableOffices", "Appointment")',
+            GET_AVAILABLE_HOURS: '@Url.Action("GetAvailableHours", "Appointment")',
+            INSERT_VITAL_SIGNS: '@Url.Action("InsertVitalSigns", "Appointment")',
+            SEND_WHATSAPP_REMINDER: '@Url.Action("SendWhatsAppReminder", "Appointment")',
+            NEW_CONSULTATION: '@Url.Action("NewConsultation", "Consultation")',
+            CONSULTATION_FOLLOWUP: '@Url.Action("ConsultationFollowUp", "Consultation")',
+            CONSULTATION_LIST: '@Url.Action("ConsultationList", "Consultation")',
+            BILLING: '@Url.Action("Facturacion", "Billing")',
+            BILL_LABORATORY: '@Url.Action("FacturacionLaboratorio", "Billing")'
+        };
+    </script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const peso = document.getElementById("weight");
+            const altura = document.getElementById("height");
+            const imc = document.getElementById("bmi");
+
+            function calcularIMC(){
+                const p = parseFloat(peso.value);
+                const t = parseFloat(altura.value) / 100;
+                if(!isNaN(p) && !isNaN(t) && t > 0){
+                    imc.value = (p / (t * t)).toFixed(2);
+                }
+            }
+
+            peso.addEventListener("input", calcularIMC);
+            altura.addEventListener("input", calcularIMC);
+        });
+    </script>
+
+    <!-- Mensajes de éxito/error -->
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <script>
+            Swal.fire({
+                icon: 'success',
+                title: '¡Éxito!',
+                text: '@successMessage'
+            });
+        </script>
+    }
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <script>
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: '@errorMessage'
+            });
+        </script>
+    }
+}

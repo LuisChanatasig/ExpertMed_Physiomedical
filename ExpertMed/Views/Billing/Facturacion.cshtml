@@ -1,0 +1,664 @@
+﻿@{
+    ViewData["Title"] = "Facturacion";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var successMessage = TempData["SuccessMessage"] as string;
+    var errorMessage = TempData["ErrorMessage"] as string;
+}
+
+<input type="hidden" id="hasInsurance" value="@ViewBag.HasInsurance.ToString().ToLower()" />
+<input type="hidden" id="insuranceCompanyId" value="@ViewBag.InsuranceCompanyId" />
+<input type="hidden" id="AppointmentPatientId" value="@ViewBag.AppointmentPatientId" />
+
+<div class="col-xl-12">
+    <div class="card">
+        <div class="card-header">
+            <h4 class="card-title mb-0">Generación de Factura y Pago</h4>
+        </div>
+        <div class="card-body">
+            <form asp-action="Billing" asp-controller="Billing" method="post" enctype="multipart/form-data" id="billingForm">
+                <input type="hidden" name="CitaId" value="@ViewBag.AppointmentId" />
+                <input type="hidden" name="AppointmentPatientId" value="@ViewBag.AppointmentPatientId" />
+                <input type="hidden" id="insuranceCompanyId" name="InsuranceCompanyId" value="@ViewBag.InsuranceCompanyId" />
+
+                <!-- Sección: Datos de Facturación -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Datos de Facturación</h5>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="cargarDatosPaciente()">
+                                <i class="ri-user-line align-middle"></i> Mismos datos del paciente
+                            </button>
+                        </div>
+                        <div class="col">
+                            <button type="button" class="btn btn-outline-secondary w-100" data-bs-toggle="collapse"
+                                    data-bs-target="#facturacion-extra" onclick="limpiarFormulario()">
+                                <i class="ri-edit-box-line align-middle"></i> Otros datos
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="collapse" id="facturacion-extra">
+                        <div class="card card-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Nombre completo</label>
+                                    <input type="text" class="form-control" name="BillingDetailsNames" placeholder="Nombre completo">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Identificación</label>
+                                    <input type="text" class="form-control" name="BillingDetailsCiNumber" placeholder="Identificación">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Tipo de Documento</label>
+                                    <select class="form-control" name="BillingDetailsDocumentType" required>
+                                        <option value="05" selected>Cédula</option>
+                                        <option value="04">RUC</option>
+                                        <option value="06">Pasaporte</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Correo Electrónico</label>
+                                    <input type="email" class="form-control" name="BillingDetailsEmail" placeholder="correo@ejemplo.com">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Dirección</label>
+                                    <input type="text" class="form-control" name="BillingDetailsAddress" placeholder="Dirección">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Teléfono</label>
+                                    <input type="tel" class="form-control" name="BillingDetailsPhone" placeholder="Teléfono">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sección: Servicios -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Detalle de Servicios</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Descripción</th>
+                                    <th>Cantidad</th>
+                                    <th class="no-insurance">Precio Unitario</th>
+                                    <th class="col-insurance d-none">Precio Base (Clínica)</th>
+                                    <th class="col-insurance d-none">Cubre Aseguradora</th>
+                                    <th class="col-insurance d-none">Copago Pendiente</th>
+                                    <th>Descuento (%)</th>
+                                    <th>Total</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invoice-items-body"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-outline-success" onclick="agregarItem()">
+                        + Agregar ítem
+                    </button>
+                </div>
+
+                <!-- Sección: Métodos de Pago -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Métodos de Pago</h5>
+                    <div class="alert alert-info">
+                        <i class="ri-information-line"></i> Puede agregar múltiples métodos de pago. La suma debe coincidir con el total de la factura.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Método de Pago</th>
+                                    <th>Monto</th>
+                                    <th>Comprobante</th>
+                                    <th>Notas</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payment-methods-body"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary" onclick="agregarMetodoPago()">
+                        + Agregar Método de Pago
+                    </button>
+                </div>
+
+                <!-- Resumen de Totales -->
+                <!-- Resumen de Totales -->
+                <div class="row mb-4">
+                    <div class="col-md-12" id="resumen-sin-seguro" style="display: none;">
+                        <label class="form-label">Total a Pagar</label>
+                        <input type="text" class="form-control fw-bold" name="TotalFactura" id="totalFacturaSinSeguro" readonly required>
+                    </div>
+
+                    <div class="col-md-12" id="resumen-con-seguro" style="display: none;">
+                        <div class="card border-primary">
+                            <div class="card-body">
+                                <h6 class="card-title text-primary">Desglose de Pagos</h6>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Precio Total Clínica</label>
+                                        <input type="text" class="form-control" id="totalPrecioBase" readonly>
+                                        <small class="text-muted">Precio sin seguro</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold text-success">Paciente Paga Ahora</label>
+                                        <input type="text" class="form-control fw-bold bg-success-subtle"
+                                               name="TotalFactura" id="totalFacturaConSeguro" readonly required>
+                                        <small class="text-muted">Lo que cubre la aseguradora</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-warning">Copago Pendiente</label>
+                                        <input type="text" class="form-control bg-warning-subtle" id="totalCopago" readonly>
+                                        <small class="text-muted">Se cobra a aseguradora después</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="alert alert-warning">
+                            <strong>Pendiente por pagar: $<span id="total-pendiente">0.00</span></strong>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success btn-lg">
+                    <i class="ri-save-line"></i> Generar Factura y Registrar Pago.
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const tieneSeguro = document.getElementById("hasInsurance").value === "true";
+        const insuranceCompanyId = document.getElementById("insuranceCompanyId").value;
+        const esAseguradora = tieneSeguro && insuranceCompanyId == "8";
+        let contadorItems = 0;
+        let contadorPagos = 0;
+
+        const paymentOptions = [
+            { value: 'efectivo', text: 'Efectivo' },
+            { value: 'transferencia', text: 'Transferencia bancaria' },
+            { value: 'tarjeta_debito', text: 'Tarjeta de débito' },
+            { value: 'tarjeta_prepago', text: 'Tarjeta prepago' },
+            { value: 'tarjeta_credito', text: 'Tarjeta de crédito' },
+            { value: 'otros', text: 'Otros' },
+            { value: 'endoso_titulos', text: 'Endoso de títulos' }
+        ];
+
+        function normalizeNumberInput(value) {
+            if (typeof value === 'string') {
+                return value.replace(",", ".");
+            }
+            return value;
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            if (esAseguradora) {
+                document.querySelectorAll(".col-insurance").forEach(el => el.classList.remove("d-none"));
+                document.querySelectorAll(".no-insurance").forEach(el => el.classList.add("d-none"));
+                document.getElementById("resumen-con-seguro").style.display = "block";
+            } else {
+                document.getElementById("resumen-sin-seguro").style.display = "block";
+            }
+
+            document.getElementById('billingForm').addEventListener('submit', function(e) {
+                const filas = document.querySelectorAll("#invoice-items-body tr");
+                if (filas.length === 0) {
+                    e.preventDefault();
+                    Swal.fire('Error', 'Debes agregar al menos un ítem a la factura.', 'warning');
+                    return false;
+                }
+
+                const paymentRows = document.querySelectorAll("#payment-methods-body tr");
+                if (paymentRows.length === 0) {
+                    e.preventDefault();
+                    Swal.fire('Error', 'Debes agregar al menos un método de pago.', 'warning');
+                    return false;
+                }
+
+                if (!validarTotalPagos()) {
+                    e.preventDefault();
+                    Swal.fire('Error', 'La suma de los métodos de pago debe coincidir con el total de la factura.', 'error');
+                    return false;
+                }
+
+                const camposRequeridos = ['BillingDetailsNames', 'BillingDetailsCiNumber', 'BillingDetailsEmail'];
+                const camposFaltantes = camposRequeridos.filter(campo => {
+                    const input = this.querySelector(`[name="${campo}"]`);
+                    return !input || !input.value.trim();
+                });
+
+                if (camposFaltantes.length > 0) {
+                    e.preventDefault();
+                    Swal.fire('Error', 'Por favor complete todos los datos de facturación requeridos.', 'warning');
+                    return false;
+                }
+
+                let itemsValidos = true;
+                filas.forEach((fila) => {
+                    const desc = fila.querySelector(".descripcion-select")?.value.trim();
+                    const cant = parseFloat(normalizeNumberInput(fila.querySelector(".cantidad")?.value));
+                    let precio;
+                    if (esAseguradora) {
+                        precio = parseFloat(normalizeNumberInput(fila.querySelector(".precio-aseguradora")?.value));
+                    } else {
+                        precio = parseFloat(normalizeNumberInput(fila.querySelector(".precio-sin-seguro")?.value));
+                    }
+
+                    if (!desc || isNaN(cant) || cant <= 0 || isNaN(precio) || precio <= 0) {
+                        itemsValidos = false;
+                    }
+                });
+
+                if (!itemsValidos) {
+                    e.preventDefault();
+                    Swal.fire('Error', 'Verifica que todos los ítems tengan descripción, cantidad y precio válidos.', 'warning');
+                    return false;
+                }
+            });
+        });
+
+        function agregarItem() {
+            const tbody = document.getElementById('invoice-items-body');
+            const index = contadorItems++;
+            const row = document.createElement('tr');
+
+            row.innerHTML = `
+            <td>
+                <select class="form-control descripcion-select"
+                        name="Items[${index}].DescripcionVisible"
+                        placeholder="Buscar procedimiento" required></select>
+            </td>
+            <td>
+                <input type="number" class="form-control cantidad" name="Items[${index}].Quantity"
+                       min="1" value="1" onchange="recalcularItem(this)" required>
+            </td>
+            <td class="no-insurance ${esAseguradora ? 'd-none' : ''}">
+                <input type="number" class="form-control precio-sin-seguro" name="Items[${index}].UnitPrice"
+                       min="0" step="0.01" value="0.00" onchange="recalcularItem(this)" required>
+            </td>
+            <td class="col-insurance ${esAseguradora ? '' : 'd-none'}">
+                <input type="number" class="form-control precio-base-display"
+                       min="0" step="0.01" value="0.00" readonly style="background-color: #f8f9fa;">
+            </td>
+            <td class="col-insurance ${esAseguradora ? '' : 'd-none'}">
+                <input type="number" class="form-control precio-aseguradora" name="Items[${index}].UnitPrice"
+                       min="0" step="0.01" value="0.00" onchange="recalcularItem(this)" required>
+            </td>
+            <td class="col-insurance ${esAseguradora ? '' : 'd-none'}">
+                <input type="number" class="form-control copago" value="0.00" step="0.01" readonly
+                       style="background-color: #fff3cd;">
+            </td>
+            <td>
+                <input type="number" class="form-control descuento-item"
+                       name="Items[${index}].DescuentoPorcentaje"
+                       value="0" min="0" max="100" step="0.01"
+                       onchange="recalcularItem(this)">
+            </td>
+            <td><input type="number" class="form-control total-item" value="0.00" step="0.01" readonly></td>
+            <td>
+                <button type="button" class="btn btn-danger btn-sm" onclick="eliminarItem(this)">
+                    <i class="ri-delete-bin-line"></i>
+                </button>
+            </td>
+        `;
+
+            tbody.appendChild(row);
+
+            const select = row.querySelector(".descripcion-select");
+            $(select).select2({
+                placeholder: "Buscar procedimiento",
+                minimumInputLength: 2,
+                width: '100%',
+                ajax: {
+                    url: '@Url.Action("BuscarProcedimientos", "Tarifario")',
+                    data: function (params) {
+                        return {
+                            termino: params.term,
+                            insuranceCompanyId: insuranceCompanyId
+                        };
+                    },
+                    processResults: function (data) {
+                        return { results: data };
+                    }
+                }
+            }).on('select2:select', function (e) {
+                const selected = e.params.data;
+                const fila = e.target.closest("tr");
+                const filaIndex = Array.from(fila.parentNode.children).indexOf(fila);
+
+                let hiddenCode = fila.querySelector(`input[name="Items[${filaIndex}].Code"]`);
+                if (!hiddenCode) {
+                    hiddenCode = document.createElement('input');
+                    hiddenCode.type = 'hidden';
+                    hiddenCode.name = `Items[${filaIndex}].Code`;
+                    fila.appendChild(hiddenCode);
+                }
+                hiddenCode.value = selected.id || "";
+
+                let hiddenDescription = fila.querySelector(`input[name="Items[${filaIndex}].Description"]`);
+                if (!hiddenDescription) {
+                    hiddenDescription = document.createElement('input');
+                    hiddenDescription.type = 'hidden';
+                    hiddenDescription.name = `Items[${filaIndex}].Description`;
+                    fila.appendChild(hiddenDescription);
+                }
+                hiddenDescription.value = selected.text || "";
+
+                let hiddenPrecioBase = fila.querySelector(`input[name="Items[${filaIndex}].PrecioBase"]`);
+                if (!hiddenPrecioBase) {
+                    hiddenPrecioBase = document.createElement('input');
+                    hiddenPrecioBase.type = 'hidden';
+                    hiddenPrecioBase.name = `Items[${filaIndex}].PrecioBase`;
+                    hiddenPrecioBase.classList.add('precio-base-hidden');
+                    fila.appendChild(hiddenPrecioBase);
+                }
+
+                const precioBase = parseFloat(normalizeNumberInput(selected.precio?.toString() || "0")) || 0;
+                const precioAseguradora = parseFloat(normalizeNumberInput(selected.precio_aseguradora?.toString() || "0")) || 0;
+
+                hiddenPrecioBase.value = precioBase.toFixed(2);
+
+                const precioBaseDisplay = fila.querySelector(".precio-base-display");
+
+                if (esAseguradora) {
+                    const precioAseguradoraInput = fila.querySelector(".precio-aseguradora");
+                    if (precioBaseDisplay) precioBaseDisplay.value = precioBase.toFixed(2);
+                    if (precioAseguradoraInput) precioAseguradoraInput.value = precioAseguradora.toFixed(2);
+                    recalcularItem(precioAseguradoraInput);
+                } else {
+                    const precioSinSeguroInput = fila.querySelector(".precio-sin-seguro");
+                    if (precioSinSeguroInput) precioSinSeguroInput.value = precioBase.toFixed(2);
+                    recalcularItem(precioSinSeguroInput);
+                }
+            });
+        }
+
+        function eliminarItem(btn) {
+            btn.closest('tr').remove();
+            recalcularTotal();
+        }
+
+        function recalcularItem(elemento) {
+            const fila = elemento.closest('tr');
+            const cantidad = parseFloat(normalizeNumberInput(fila.querySelector('.cantidad')?.value || 0));
+
+            let precioUnitario;
+            if (esAseguradora) {
+                precioUnitario = parseFloat(normalizeNumberInput(fila.querySelector('.precio-aseguradora')?.value || 0));
+            } else {
+                precioUnitario = parseFloat(normalizeNumberInput(fila.querySelector('.precio-sin-seguro')?.value || 0));
+            }
+
+            const descuentoInput = fila.querySelector('.descuento-item');
+            let descuentoPorcentaje = parseFloat(normalizeNumberInput(descuentoInput?.value || 0));
+            if (descuentoPorcentaje < 0) descuentoPorcentaje = 0;
+            if (descuentoPorcentaje > 100) descuentoPorcentaje = 100;
+
+            let copago = 0;
+            if (esAseguradora) {
+                const precioBaseHidden = fila.querySelector('.precio-base-hidden');
+                const precioBase = precioBaseHidden ? parseFloat(precioBaseHidden.value || 0) : precioUnitario;
+                copago = precioBase - precioUnitario;
+            }
+
+            const copagoInput = fila.querySelector('.copago');
+            if (copagoInput) copagoInput.value = copago.toFixed(2);
+
+            const precioConDescuento = precioUnitario - (precioUnitario * descuentoPorcentaje / 100);
+            const subtotal = precioConDescuento * cantidad;
+
+            const totalItemInput = fila.querySelector('.total-item');
+            if (totalItemInput) totalItemInput.value = subtotal.toFixed(2);
+
+            recalcularTotal();
+        }
+
+               function recalcularTotal() {
+            let totalFactura = 0;
+            let totalPrecioBase = 0;
+            let totalCopago = 0;
+
+            document.querySelectorAll("#invoice-items-body tr").forEach(fila => {
+                const cantidad = parseFloat(normalizeNumberInput(fila.querySelector(".cantidad")?.value || 0));
+
+                let precioUnitario;
+                if (esAseguradora) {
+                    precioUnitario = parseFloat(normalizeNumberInput(fila.querySelector(".precio-aseguradora")?.value || 0));
+                } else {
+                    precioUnitario = parseFloat(normalizeNumberInput(fila.querySelector(".precio-sin-seguro")?.value || 0));
+                }
+
+                const descuentoPorcentaje = parseFloat(normalizeNumberInput(fila.querySelector('.descuento-item')?.value || 0));
+
+                if (esAseguradora) {
+                    const precioBaseHidden = fila.querySelector('.precio-base-hidden');
+                    const precioBase = precioBaseHidden ? parseFloat(precioBaseHidden.value || 0) : 0;
+
+                    totalPrecioBase += precioBase * cantidad;
+                    totalFactura += precioUnitario * cantidad;
+                    totalCopago += (precioBase - precioUnitario) * cantidad;
+                } else {
+                    const precioConDescuento = precioUnitario - (precioUnitario * descuentoPorcentaje / 100);
+                    totalFactura += cantidad * precioConDescuento;
+                }
+            });
+
+            // Actualizar el campo correcto según el tipo
+            if (esAseguradora) {
+                document.getElementById('totalFacturaConSeguro').value = totalFactura.toFixed(2);
+                document.getElementById('totalPrecioBase').value = totalPrecioBase.toFixed(2);
+                document.getElementById('totalCopago').value = totalCopago.toFixed(2);
+            } else {
+                document.getElementById('totalFacturaSinSeguro').value = totalFactura.toFixed(2);
+            }
+
+            validarTotalPagos();
+        }
+
+        function validarTotalPagos() {
+            // Obtener el total correcto según el tipo
+            const totalFacturaInput = esAseguradora
+                ? document.getElementById('totalFacturaConSeguro')
+                : document.getElementById('totalFacturaSinSeguro');
+
+            const totalFactura = parseFloat(totalFacturaInput?.value || 0);
+            let totalPagos = 0;
+
+            document.querySelectorAll('.payment-amount').forEach(input => {
+                totalPagos += parseFloat(input.value || 0);
+            });
+
+            const pendiente = totalFactura - totalPagos;
+            const pendienteElement = document.getElementById('total-pendiente');
+
+            if (pendienteElement) {
+                pendienteElement.textContent = Math.abs(pendiente).toFixed(2);
+                const alert = pendienteElement.closest('.alert');
+
+                if (Math.abs(pendiente) > 0.01) {
+                    alert.classList.remove('alert-success');
+                    alert.classList.add('alert-warning');
+                } else {
+                    alert.classList.remove('alert-warning');
+                    alert.classList.add('alert-success');
+                }
+            }
+
+            return Math.abs(pendiente) < 0.01;
+        }
+
+        function agregarMetodoPago() {
+            const tbody = document.getElementById('payment-methods-body');
+            const index = contadorPagos++;
+
+            // Obtener el total correcto según el tipo
+            const totalFacturaInput = esAseguradora
+                ? document.getElementById('totalFacturaConSeguro')
+                : document.getElementById('totalFacturaSinSeguro');
+
+            const totalFactura = totalFacturaInput ? parseFloat(totalFacturaInput.value || 0) : 0;
+
+            const optionsHtml = paymentOptions.map(opt =>
+                `<option value="${opt.value}">${opt.text}</option>`
+            ).join('');
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <select class="form-control" name="PaymentMethods[${index}].PaymentMethod" required>
+                        ${optionsHtml}
+                    </select>
+                </td>
+                <td>
+                    <input type="number" class="form-control payment-amount"
+                           name="PaymentMethods[${index}].PaymentAmount"
+                           step="0.01" min="0.01" max="${totalFactura}"
+                           onchange="validarTotalPagos()" required>
+                </td>
+                <td>
+                   <input type="file" class="form-control payment-proof-file"
+                          name="PaymentMethods[${index}].PaymentProof"
+                          id="paymentProof${index}"
+                          accept=".jpeg,.jpg,.png,.pdf">
+                </td>
+                <td>
+                    <input type="text" class="form-control"
+                           name="PaymentMethods[${index}].PaymentNotes"
+                           placeholder="Notas opcionales">
+                </td>
+                <td>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="eliminarMetodoPago(this)">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                </td>
+            `;
+
+            tbody.appendChild(row);
+            validarTotalPagos();
+        }
+
+        function eliminarMetodoPago(btn) {
+            btn.closest('tr').remove();
+            validarTotalPagos();
+        }
+
+                function validarTotalPagos() {
+            // Obtener el total correcto según el tipo
+            const totalFacturaInput = esAseguradora
+                ? document.getElementById('totalFacturaConSeguro')
+                : document.getElementById('totalFacturaSinSeguro');
+
+            // Validar que el elemento exista
+            if (!totalFacturaInput) {
+                console.error('No se encontró el input de total factura');
+                return false;
+            }
+
+            const totalFactura = parseFloat(totalFacturaInput.value || 0);
+            let totalPagos = 0;
+
+            document.querySelectorAll('.payment-amount').forEach(input => {
+                totalPagos += parseFloat(input.value || 0);
+            });
+
+            const pendiente = totalFactura - totalPagos;
+            const pendienteElement = document.getElementById('total-pendiente');
+
+            if (pendienteElement) {
+                pendienteElement.textContent = Math.abs(pendiente).toFixed(2);
+                const alert = pendienteElement.closest('.alert');
+
+                if (Math.abs(pendiente) > 0.01) {
+                    alert.classList.remove('alert-success');
+                    alert.classList.add('alert-warning');
+                } else {
+                    alert.classList.remove('alert-warning');
+                    alert.classList.add('alert-success');
+                }
+            }
+
+            return Math.abs(pendiente) < 0.01;
+        }
+
+        function cargarDatosPaciente() {
+            const patientId = parseInt(document.getElementById("AppointmentPatientId").value, 10);
+
+            if (!patientId) {
+                Swal.fire('Error', 'No se encontró el ID del paciente.', 'error');
+                return;
+            }
+
+            fetch(`@Url.Action("GetPatientDetails", "Patient")?patientId=${patientId}`)
+                .then(r => r.json())
+                .then(data => {
+                    const form = document.getElementById('billingForm');
+                    const campos = {
+                        BillingDetailsNames: (
+                            (data.patientFirstsurname ?? '') + ' ' +
+                            (data.patientSecondlastname ?? '') + ' ' +
+                            (data.patientFirstname ?? '') + ' ' +
+                            (data.patientMiddlename ?? '')
+                        ).trim(),
+                        BillingDetailsCiNumber: data.patientDocumentnumber,
+                        BillingDetailsDocumentType: data.patientDocumentType,
+                        BillingDetailsEmail: data.patientEmail,
+                        BillingDetailsAddress: data.patientAddress,
+                        BillingDetailsPhone: data.patientCellularPhone
+                    };
+
+                    for (const name in campos) {
+                        const input = form.querySelector(`[name="${name}"]`);
+                        if (input) input.value = campos[name] || '';
+                    }
+
+                    const collapseDiv = document.getElementById('facturacion-extra');
+                    if (collapseDiv) new bootstrap.Collapse(collapseDiv, { toggle: true });
+                })
+                .catch(() => Swal.fire('Error', 'Hubo un error al obtener los datos del paciente.', 'error'));
+        }
+
+        function limpiarFormulario() {
+            const form = document.getElementById('billingForm');
+            const campos = ['BillingDetailsNames', 'BillingDetailsCiNumber', 'BillingDetailsDocumentType',
+                          'BillingDetailsEmail', 'BillingDetailsAddress', 'BillingDetailsPhone'];
+
+            campos.forEach(campo => {
+                const input = form.querySelector(`[name="${campo}"]`);
+                if (input) input.value = '';
+            });
+        }
+    </script>
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <script>
+            Swal.fire({
+                title: '¡Éxito!',
+                text: '@successMessage',
+                icon: 'success',
+                confirmButtonText: 'OK',
+                timer: 3000
+            });
+        </script>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <script>
+            Swal.fire({
+                title: 'Error',
+                text: '@errorMessage',
+                icon: 'error',
+                confirmButtonText: 'OK'
+            });
+        </script>
+    }
+}

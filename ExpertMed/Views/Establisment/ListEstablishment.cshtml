@@ -1,0 +1,109 @@
+﻿@model List<ExpertMed.Models.EstablishmentDto>
+
+@{
+    ViewData["Title"] = "ListEstablishment";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var successMessage = TempData["SuccessMessage"] as string;
+    var errorMessage = TempData["ErrorMessage"] as string;
+}
+
+<div class="card">
+    <div class="card-header">
+        <h4 class="card-title">Establecimientos Registrados</h4>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table align-middle table-striped table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Nombre</th>
+                        <th>Dirección</th>
+                        <th>P. Emisión</th>
+                        <th>P. Venta</th>
+                        <th>Secuencial</th>
+                        <th>Logo</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    @if (Model != null && Model.Any())
+                    {
+                        int i = 1;
+                        foreach (var item in Model)
+                        {
+                            <tr>
+                                <td>@i</td>
+                                <td>@item.Name</td>
+                                <td>@(item.Address ?? "-")</td>
+                                <td>@(item.EmissionPoint ?? "-")</td>
+                                <td>@(item.PointOfSale ?? "-")</td>
+                                <td>@(item.SequentialBilling?.ToString() ?? "-")</td>
+                                <td>
+                                    @if (item.Logo != null && item.Logo.Length > 0)
+                                    {
+                                        var base64Logo = Convert.ToBase64String(item.Logo);
+                                        <img src="data:image/png;base64,@base64Logo" alt="Logo" width="50" height="50" class="rounded shadow-sm" />
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Sin logo</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a href="@Url.Action("UpdateEstablishment", "Establisment", new { id = item.Id })" class="btn btn-soft-primary btn-sm" data-bs-toggle="tooltip" data-bs-placement="top" title="Revisar">
+                                        <i class="mdi mdi-eye"></i> Revisar
+                                    </a>
+                                </td>
+                            </tr>
+                            i++;
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center">No hay registros</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Activar tooltips de Bootstrap (Velzon depende de esto)
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    </script>
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <script>
+            Swal.fire({
+                title: '¡Éxito!',
+                text: '@successMessage',
+                icon: 'success',
+                confirmButtonText: 'OK',
+                timer: 3000
+            });
+        </script>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <script>
+            Swal.fire({
+                title: 'Error',
+                text: '@errorMessage',
+                icon: 'error',
+                confirmButtonText: 'OK'
+            });
+        </script>
+    }
+
+
+
+}
