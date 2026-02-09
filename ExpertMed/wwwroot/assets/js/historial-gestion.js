@@ -1,87 +1,68 @@
 ﻿/**
-<<<<<<< HEAD
  * EXPERTMED - Gestión Clínica Physio Mefrobal
- * Compatible con controlador: UpdateAvance(int sessionId, int avance, string comentarios)
- */
-window.HistorialController = (function() {
-    // Rutas dinámicas desde la vista
-    const urls = window.historialConfig;
-
-=======
- * EXPERTMED - Controlador de Gestión de Historial y Evolución Clínica
+ * Controlador de Historial Clínico y Evolución de Pacientes
  */
 window.HistorialController = (function () {
-    // Catálogo oficial de precios basado en servicios de fisioterapia
->>>>>>> Fisiomefrobal
-    const CATALOGO_PRECIOS = {
-        "Fisioterapia neurológica": 15.00, "Fisioterapia deportiva": 12.00,
-        "Fisioterapia traumatológica": 12.00, "Fisioterapia geriátrica": 10.00,
-        "Fisioterapia pediátrica": 15.00, "Terapia manual y osteopatía": 15.00,
-        "Gimnasio terapéutico grupal (día)": 8.00, "Gimnasio terapéutico grupal (mes)": 50.00,
-        "Gimnasio terapéutico individual": 12.00, "Infiltraciones de plasma rico en plaquetas": 50.00,
-        "Evaluación y diseño del plan de tratamiento": 40.00, "Estimulación temprana": 15.00,
-        "Fisioterapia facial": 15.00, "Terapia de acupuntura + moxibustion": 20.00,
-        "Terapia neural": 20.00, "Fisioterapia convencional": 10.00
-    };
+    'use strict';
 
-    // Estado interno para procesos de cobro
-    let contextCobro = { subtotal: 0, total: 0, paciente: null, items: [] };
+    // ========== FUNCIONES PRIVADAS ==========
 
     /**
-     * Calcula el total de la factura restando el descuento al subtotal
+     * Sincroniza el valor del porcentaje entre los controles
      */
-    const recalcularTotales = () => {
-        const inputDesc = document.getElementById('pagoDescuento');
-        const displaySub = document.getElementById('pagoSubtotalDisplay');
-        const displayTotal = document.getElementById('pagoTotalDisplay');
+    const sincronizarPorcentaje = (valor) => {
+        const inputPorcentaje = document.getElementById('avancePorcentaje');
+        const inputRange = document.getElementById('avanceRange');
+        const displayPorcentaje = document.getElementById('displayPorcentaje');
 
-        if (!inputDesc || !displaySub || !displayTotal) return;
-
-        const desc = parseFloat(inputDesc.value) || 0;
-        contextCobro.total = Math.max(0, contextCobro.subtotal - desc);
-
-        displaySub.innerText = `$ ${contextCobro.subtotal.toFixed(2)}`;
-        displayTotal.innerText = `$ ${contextCobro.total.toFixed(2)}`;
+        if (inputPorcentaje) inputPorcentaje.value = valor;
+        if (inputRange) inputRange.value = valor;
+        if (displayPorcentaje) displayPorcentaje.innerText = `${valor}%`;
     };
 
+    // ========== API PÚBLICA ==========
+
     return {
-<<<<<<< HEAD
-        // --- SECCIÓN: FACTURACIÓN ---
-        abrirModalPago: function(pIdx, sIdx, sesionIdx) {
-=======
         /**
-         * Inicializa y muestra el modal de avance con los datos de la sesión
+         * Abre el modal de avance con los datos de la sesión
+         * @param {number} id - ID de la sesión
+         * @param {number} porcentaje - Porcentaje de avance actual
+         * @param {string} notas - Notas de evolución
          */
         abrirModalAvance: function (id, porcentaje, notas) {
             const inputId = document.getElementById('avanceSessionId');
-            const inputPorc = document.getElementById('avancePorcentaje');
-            const inputRange = document.getElementById('avanceRange');
             const inputNotas = document.getElementById('avanceNotas');
 
             if (inputId) inputId.value = id;
-            if (inputPorc) inputPorc.value = porcentaje;
-            if (inputRange) inputRange.value = porcentaje;
-            if (inputNotas) inputNotas.value = decodeURIComponent(notas);
+            if (inputNotas) inputNotas.value = decodeURIComponent(notas || '');
+
+            sincronizarPorcentaje(porcentaje);
 
             const modalEl = document.getElementById('modalAvance');
             if (modalEl) {
-                const myModal = new bootstrap.Modal(modalEl);
-                myModal.show();
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
             }
         },
 
         /**
-         * Envía los datos de evolución al servidor usando la URL de Razor
+         * Guarda el avance clínico de la sesión
          */
         guardarAvance: async function () {
-            const sessionId = document.getElementById('avanceSessionId').value;
-            const porcentaje = document.getElementById('avancePorcentaje').value;
-            const notas = document.getElementById('avanceNotas').value;
+            const sessionId = document.getElementById('avanceSessionId')?.value;
+            const porcentaje = document.getElementById('avancePorcentaje')?.value;
+            const notas = document.getElementById('avanceNotas')?.value;
 
-            if (!sessionId) return;
+            if (!sessionId) {
+                Swal.fire('Advertencia', 'No se ha seleccionado una sesión válida.', 'warning');
+                return;
+            }
 
-            // Ruta obtenida desde window.TherapyUrls definida en la vista
-            const url = window.TherapyUrls.updateProgress;
+            const url = window.TherapyUrls?.updateProgress;
+            if (!url) {
+                Swal.fire('Error', 'No se ha configurado la URL de actualización.', 'error');
+                return;
+            }
 
             Swal.fire({
                 title: 'Actualizando Historial...',
@@ -91,318 +72,255 @@ window.HistorialController = (function () {
             });
 
             try {
+                // CAMBIO: Enviar como FormData (application/x-www-form-urlencoded)
+                const formData = new URLSearchParams();
+                formData.append('sessionId', sessionId);
+                formData.append('avance', porcentaje);
+                formData.append('comentarios', notas || '');
+
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        SessionId: parseInt(sessionId),
-                        AvancePorcentaje: parseInt(porcentaje),
-                        AvanceNotas: notas
-                    })
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData.toString()
                 });
 
-                const result = await response.json();
-                if (result.success) {
-                    Swal.fire({
+                if (response.ok) {
+                    await Swal.fire({
                         icon: 'success',
                         title: '¡Evolución Guardada!',
                         text: 'El historial clínico ha sido actualizado.',
                         timer: 1500,
                         showConfirmButton: false
-                    }).then(() => location.reload());
+                    });
+                    location.reload();
                 } else {
-                    Swal.fire('Error', result.message || 'No se pudo completar la acción', 'error');
+                    Swal.fire('Error', 'No se pudo completar la acción', 'error');
                 }
             } catch (err) {
+                console.error('Error al guardar avance:', err);
                 Swal.fire('Error de Conexión', 'No se pudo contactar con el servidor clínico.', 'error');
             }
         },
 
         /**
-         * Prepara los datos para el modal de facturación
+         * Genera e imprime el reporte de evolución del paciente
+         * @param {number} pIdx - Índice del paciente
+         * @param {number} sIdx - Índice de la solicitud
          */
-        abrirModalPago: function (pIdx, sIdx, sesionIdx) {
->>>>>>> Fisiomefrobal
-            const paciente = window.historialClinico[pIdx];
-            const solicitud = paciente.Solicitudes[sIdx];
-            const sesionesTarget = (sesionIdx === null) ? solicitud.Sesiones : [solicitud.Sesiones[sesionIdx]];
+        imprimirReporteEvolucion: function (pIdx, sIdx) {
+            const paciente = window.historialClinico?.[pIdx];
+            const solicitud = paciente?.Solicitudes?.[sIdx];
 
-            contextCobro.items = sesionesTarget.map(s => ({
-                Codigo: "FISIO-001", Descripcion: s.Tipo, Cantidad: 1, Precio: CATALOGO_PRECIOS[s.Tipo] || 10.00
-            }));
-
-<<<<<<< HEAD
-            contextCobro.subtotal = contextCobro.items.reduce((a, b) => a + b.Precio, 0);
-=======
-            sesionesTarget.forEach(s => {
-                const precio = CATALOGO_PRECIOS[s.Tipo] || 10.00;
-                itemsParaFacturar.push({
-                    billing_item_code: "FISIO-001",
-                    billing_item_description: s.Tipo,
-                    billing_item_quantity: 1,
-                    billing_item_unit_price: precio
-                });
-            });
-
-            contextCobro.subtotal = itemsParaFacturar.reduce((a, b) => a + b.billing_item_unit_price, 0);
-            contextCobro.items = itemsParaFacturar;
->>>>>>> Fisiomefrobal
-            contextCobro.paciente = paciente;
-
-            document.getElementById('pagoNombres').value = paciente.NombrePaciente;
-            document.getElementById('pagoIdentificacion').value = paciente.CedulaPaciente;
-            document.getElementById('pagoTipoDoc').value = paciente.CedulaPaciente.length === 13 ? "04" : "05";
-<<<<<<< HEAD
-            document.getElementById('pagoEmail').value = paciente.EmailPaciente || "";
-            document.getElementById('pagoDescuento').value = "0.00";
-            
-=======
-            document.getElementById('pagoDescuento').value = "0.00";
-
->>>>>>> Fisiomefrobal
-            recalcularTotales();
-            const modalPago = new bootstrap.Modal(document.getElementById('modalPago'));
-            modalPago.show();
-        },
-
-<<<<<<< HEAD
-   confirmarPago: async function() {
-        const btn = document.getElementById('btnConfirmarPago');
-    
-        // CAPTURAMOS EL VALOR DEL SELECT DE TIPO DE DOCUMENTO
-        const tipoDoc = document.getElementById('pagoTipoDoc').value;
-=======
-        /**
-         * Procesa el cobro y emite la factura electrónica
-         */
-        confirmarPago: async function () {
-            const url = window.TherapyUrls.processInvoice;
-
-            const payload = {
-                pacienteId: contextCobro.paciente.PacienteId,
-                totalFactura: contextCobro.total,
-                metodoPago: document.getElementById('metodoPago').value,
-                nombres: document.getElementById('pagoNombres').value,
-                identificacion: document.getElementById('pagoIdentificacion').value,
-                tipoIdentificacion: document.getElementById('pagoTipoDoc').value,
-                email: document.getElementById('pagoEmail').value,
-                items: contextCobro.items
-            };
->>>>>>> Fisiomefrobal
-
-        const payload = {
-            pacienteId: contextCobro.paciente.PacienteId,
-            totalFactura: contextCobro.total,
-            metodoPago: document.getElementById('metodoPago').value,
-            nombres: document.getElementById('pagoNombres').value,
-            identificacion: document.getElementById('pagoIdentificacion').value,
-            tipoIdentificacion: tipoDoc, // <-- ESTO ES LO QUE FALTA
-            email: document.getElementById('pagoEmail').value,
-            items: contextCobro.items
-        };
-
-<<<<<<< HEAD
-        Swal.fire({ title: 'Emitiendo...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-        try {
-            const res = await fetch(urls.urlProcessInvoice, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-        
-            const data = await res.json();
-            if (data.success) {
-                Swal.fire('¡Éxito!', 'Factura emitida.', 'success').then(() => location.reload());
-            } else {
-                Swal.fire('Error Dátil', data.message, 'error');
+            if (!paciente || !solicitud) {
+                Swal.fire('Error', 'No se encontraron datos para imprimir.', 'error');
+                return;
             }
-        } catch (e) { 
-            Swal.fire('Error', 'Fallo al conectar con el servidor', 'error'); 
-        }
-    },
 
-        // --- SECCIÓN: AVANCE CLÍNICO ---
-        abrirModalAvance: function(id, porcentaje, notas) {
-            document.getElementById('avanceSessionId').value = id;
-            document.getElementById('avancePorcentaje').value = porcentaje;
-            document.getElementById('displayPorcentaje').innerText = porcentaje + "%";
-            document.getElementById('avanceNotas').value = decodeURIComponent(notas);
-            new bootstrap.Modal(document.getElementById('modalAvance')).show();
-        },
+            const ventanaImpresion = window.open('', '_blank');
 
-        guardarAvance: async function() {
-            const btn = document.getElementById('btnGuardarAvance');
-            
-            // Recolectar datos
-            const sessionId = document.getElementById('avanceSessionId').value;
-            const avance = document.getElementById('avancePorcentaje').value;
-            const comentarios = document.getElementById('avanceNotas').value;
-
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-
-            try {
-                // Preparamos los datos como FormUrlEncoded para que coincidan con los parámetros del controlador
-                const formData = new URLSearchParams();
-                formData.append('sessionId', sessionId);
-                formData.append('avance', avance);
-                formData.append('comentarios', comentarios);
-
-                const res = await fetch(urls.urlUpdateProgress, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: formData
-                });
-
-                if (res.ok) {
-                    Swal.fire({ 
-                        icon: 'success', 
-                        title: '¡Actualizado!', 
-                        timer: 1500, 
-                        showConfirmButton: false 
-                    }).then(() => {
-                        // Como el controlador devuelve RedirectToAction, redirigimos a la URL final
-                        window.location.href = res.url; 
-                    });
-                } else {
-                    throw new Error("Error en servidor");
-                }
-            } catch (e) { 
-                Swal.fire('Error', 'No se pudo guardar el progreso.', 'error'); 
-            } finally { 
-                btn.disabled = false; 
-                btn.innerText = 'Actualizar Progreso'; 
-            }
-        },
-
-        // --- SECCIÓN: IMPRESIÓN ---
-        imprimirReporteEvolucion: function(pIdx, sIdx) {
-            const paciente = window.historialClinico[pIdx];
-            const solicitud = paciente.Solicitudes[sIdx];
-            
-            const win = window.open('', '_blank');
-            win.document.write(`
-                <html>
+            ventanaImpresion.document.write(`
+                <!DOCTYPE html>
+                <html lang="es">
                 <head>
+                    <meta charset="UTF-8">
                     <title>Reporte de Evolución - Physio Mefrobal</title>
                     <style>
-                        body { font-family: 'Segoe UI', sans-serif; padding: 40px; color: #333; }
-                        .header { display: flex; justify-content: space-between; border-bottom: 3px solid #2A5C66; padding-bottom: 10px; }
-                        .brand { color: #2A5C66; font-size: 24px; font-weight: bold; }
-                        .title { text-align: center; color: #2A5C66; margin: 30px 0; text-transform: uppercase; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                        th { background: #2A5C66; color: white; padding: 10px; text-align: left; font-size: 11px; }
-                        td { padding: 10px; border-bottom: 1px solid #eee; font-size: 11px; }
-                        .bar { background: #eee; width: 100%; height: 8px; border-radius: 4px; }
-                        .fill { background: #2A5C66; height: 100%; border-radius: 4px; }
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body { 
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                            padding: 40px; 
+                            color: #333; 
+                            line-height: 1.6;
+                        }
+                        .header { 
+                            display: flex; 
+                            justify-content: space-between; 
+                            align-items: center;
+                            border-bottom: 3px solid #2A5C66; 
+                            padding-bottom: 15px;
+                            margin-bottom: 30px;
+                        }
+                        .brand { 
+                            color: #2A5C66; 
+                            font-size: 28px; 
+                            font-weight: bold; 
+                        }
+                        .contact-info {
+                            text-align: right;
+                            font-size: 11px;
+                            color: #666;
+                        }
+                        .title { 
+                            text-align: center; 
+                            color: #2A5C66; 
+                            margin: 20px 0;
+                            font-size: 22px;
+                            text-transform: uppercase; 
+                            letter-spacing: 1px;
+                        }
+                        .patient-info {
+                            background: #f8f9fa;
+                            padding: 15px;
+                            border-radius: 8px;
+                            margin: 20px 0;
+                            font-size: 13px;
+                        }
+                        .patient-info strong { color: #2A5C66; }
+                        table { 
+                            width: 100%; 
+                            border-collapse: collapse; 
+                            margin-top: 20px;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        }
+                        thead { background: #2A5C66; color: white; }
+                        th { 
+                            padding: 12px; 
+                            text-align: left; 
+                            font-size: 11px;
+                            font-weight: 600;
+                            text-transform: uppercase;
+                        }
+                        td { 
+                            padding: 12px; 
+                            border-bottom: 1px solid #e9ecef; 
+                            font-size: 12px; 
+                        }
+                        tbody tr:hover { background: #f8f9fa; }
+                        .progress-bar-container { 
+                            background: #e9ecef; 
+                            width: 100%; 
+                            height: 10px; 
+                            border-radius: 5px;
+                            overflow: hidden;
+                            margin-top: 5px;
+                        }
+                        .progress-bar-fill { 
+                            background: linear-gradient(90deg, #2A5C66, #44808d);
+                            height: 100%; 
+                            border-radius: 5px;
+                            transition: width 0.3s ease;
+                        }
+                        .footer {
+                            margin-top: 40px;
+                            text-align: center;
+                            font-size: 10px;
+                            color: #999;
+                            border-top: 1px solid #eee;
+                            padding-top: 20px;
+                        }
+                        @media print {
+                            body { padding: 20px; }
+                            .no-print { display: none; }
+                        }
                     </style>
                 </head>
                 <body>
                     <div class="header">
                         <div class="brand">Physio Mefrobal</div>
-                        <div style="text-align:right; font-size:10px;">Guaranda, Ecuador<br>+593 98 527 5678</div>
+                        <div class="contact-info">
+                            Guaranda, Ecuador<br>
+                            Tel: +593 98 527 5678<br>
+                            www.physiomefrobal.com
+                        </div>
                     </div>
-                    <h3 class="title">Evolución Clínica</h3>
-                    <p><b>Paciente:</b> ${paciente.NombrePaciente} | <b>Terapeuta:</b> ${solicitud.TerapeutaNombre}</p>
+                    
+                    <h3 class="title">Reporte de Evolución Clínica</h3>
+                    
+                    <div class="patient-info">
+                        <strong>Paciente:</strong> ${paciente.NombrePaciente} &nbsp;|&nbsp; 
+                        <strong>Cédula:</strong> ${paciente.CedulaPaciente} &nbsp;|&nbsp; 
+                        <strong>Terapeuta:</strong> ${solicitud.TerapeutaNombre} &nbsp;|&nbsp; 
+                        <strong>Fecha Solicitud:</strong> ${new Date(solicitud.FechaSolicitud).toLocaleDateString('es-EC')}
+                    </div>
+                    
                     <table>
-                        <thead><tr><th>FECHA</th><th>TERAPIA</th><th>LOGRO (%)</th><th>OBSERVACIONES</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo de Terapia</th>
+                                <th>Avance (%)</th>
+                                <th>Observaciones Clínicas</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            ${solicitud.Sesiones.map(s => `
+                            ${solicitud.Sesiones.map(sesion => `
                                 <tr>
-                                    <td>${new Date(s.Fecha).toLocaleDateString()}</td>
-                                    <td>${s.Tipo}</td>
-                                    <td>${s.AvancePorcentaje}% <div class="bar"><div class="fill" style="width:${s.AvancePorcentaje}%"></div></div></td>
-                                    <td>${s.AvanceNotas || 'Sin novedades.'}</td>
+                                    <td>${new Date(sesion.Fecha).toLocaleDateString('es-EC')}</td>
+                                    <td><strong>${sesion.Tipo}</strong></td>
+                                    <td>
+                                        ${sesion.AvancePorcentaje}%
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width:${sesion.AvancePorcentaje}%"></div>
+                                        </div>
+                                    </td>
+                                    <td>${sesion.AvanceNotas || '<em>Sin observaciones registradas</em>'}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
+                    
+                    <div class="footer">
+                        Documento generado el ${new Date().toLocaleString('es-EC')}<br>
+                        Este reporte es confidencial y de uso exclusivo médico
+                    </div>
                 </body>
                 </html>
             `);
-            win.document.close();
-            setTimeout(() => win.print(), 500);
+
+            ventanaImpresion.document.close();
+
+            // Imprimir después de cargar completamente
+            setTimeout(() => {
+                ventanaImpresion.focus();
+                ventanaImpresion.print();
+            }, 500);
         },
 
-=======
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    Swal.fire('¡Éxito!', 'Factura procesada correctamente.', 'success').then(() => location.reload());
-                } else {
-                    Swal.fire('Error', result.message, 'error');
-                }
-            } catch (err) {
-                Swal.fire('Error', 'Fallo de conexión al servicio de facturación.', 'error');
-            }
-        },
-
->>>>>>> Fisiomefrobal
-        recalcularTotales: recalcularTotales
+        /**
+         * Expone la función de sincronización de porcentaje
+         */
+        sincronizarPorcentaje: sincronizarPorcentaje
     };
 })();
 
-<<<<<<< HEAD
-// Inicialización de Eventos DOM
+// ========== INICIALIZACIÓN DE EVENTOS ==========
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Buscador global
-    const search = document.getElementById('globalSearch');
-    if (search) {
-        search.onkeyup = function() {
-            const q = this.value.toLowerCase();
-            document.querySelectorAll('.grupo-historial').forEach(el => {
-                el.style.display = el.innerText.toLowerCase().includes(q) ? "" : "none";
-            });
-        };
-    }
-
-    // Registro de botones (listeners)
-    const btnPago = document.getElementById('btnConfirmarPago');
-    if (btnPago) btnPago.onclick = () => window.HistorialController.confirmarPago();
-
-    const btnAvance = document.getElementById('btnGuardarAvance');
-    if (btnAvance) btnAvance.onclick = () => window.HistorialController.guardarAvance();
-
-    const inputDesc = document.getElementById('pagoDescuento');
-    if (inputDesc) inputDesc.oninput = () => window.HistorialController.recalcularTotales();
-=======
-/**
- * Inicialización de componentes y eventos al cargar el documento
- */
-document.addEventListener('DOMContentLoaded', () => {
-    // Buscador Global de Pacientes (Nombre y Cédula)
+    // Buscador global de pacientes
     const searchInput = document.getElementById('globalSearch');
     if (searchInput) {
         searchInput.addEventListener('keyup', function () {
-            const query = this.value.toLowerCase();
+            const query = this.value.toLowerCase().trim();
             document.querySelectorAll('.grupo-historial').forEach(card => {
-                const text = card.innerText.toLowerCase();
-                card.style.display = text.includes(query) ? "" : "none";
+                const texto = card.innerText.toLowerCase();
+                card.style.display = texto.includes(query) ? '' : 'none';
             });
         });
     }
 
-    // Vinculación de botones de acción
+    // Botón guardar avance
     const btnGuardarAvance = document.getElementById('btnGuardarAvance');
     if (btnGuardarAvance) {
-        btnGuardarAvance.onclick = () => window.HistorialController.guardarAvance();
+        btnGuardarAvance.addEventListener('click', () => {
+            window.HistorialController.guardarAvance();
+        });
     }
 
-    const btnConfirmarPago = document.getElementById('btnConfirmarPago');
-    if (btnConfirmarPago) {
-        btnConfirmarPago.onclick = () => window.HistorialController.confirmarPago();
+    // Sincronización de porcentaje en modal de avance
+    const inputPorcentaje = document.getElementById('avancePorcentaje');
+    const inputRange = document.getElementById('avanceRange');
+
+    if (inputPorcentaje) {
+        inputPorcentaje.addEventListener('input', function () {
+            window.HistorialController.sincronizarPorcentaje(this.value);
+        });
     }
 
-    const inputDescuento = document.getElementById('pagoDescuento');
-    if (inputDescuento) {
-        inputDescuento.oninput = () => window.HistorialController.recalcularTotales();
+    if (inputRange) {
+        inputRange.addEventListener('input', function () {
+            window.HistorialController.sincronizarPorcentaje(this.value);
+        });
     }
->>>>>>> Fisiomefrobal
 });
