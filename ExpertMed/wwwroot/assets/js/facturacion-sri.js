@@ -2,6 +2,7 @@
  * SISTEMA DE FACTURACIÓN - DÁTIL API (SRI ECUADOR)
  * Physio Mefrobal
  * Documentación: https://datil.dev
+ * CORREGIDO: Sincronización con controlador MVC
  */
 
 (function () {
@@ -17,18 +18,14 @@
     // ========== CATÁLOGOS DÁTIL ==========
 
     /**
-     * Formas de pago según Dátil
+     * Formas de pago según Dátil API
      * https://datil.dev/docs/ec/formas-de-pago
+     * Actualizado con códigos correctos de la API
      */
     const FORMAS_PAGO_DATIL = [
-        { value: '01', text: 'Efectivo' },
-        { value: '15', text: 'Compensación de deudas' },
-        { value: '16', text: 'Tarjeta de débito' },
-        { value: '17', text: 'Dinero electrónico' },
-        { value: '18', text: 'Tarjeta prepago' },
-        { value: '19', text: 'Tarjeta de crédito' },
-        { value: '20', text: 'Transferencia bancaria' },
-        { value: '21', text: 'Endoso de títulos' }
+        { value: 'efectivo', text: 'Efectivo' },
+        { value: 'transferencia', text: 'Transferencia Bancaria' },
+        { value: 'otros', text: 'Otros' }
     ];
 
     /**
@@ -138,7 +135,6 @@
      */
     function validarPasaporte(pasaporte) {
         if (!pasaporte) return false;
-        // Alfanuméricos, entre 5 y 20 caracteres
         const regex = /^[A-Z0-9]{5,20}$/i;
         return regex.test(pasaporte.trim());
     }
@@ -168,7 +164,6 @@
      */
     function validarTelefonoEcuador(telefono) {
         if (!telefono) return true; // Opcional
-        // Formato: 0999999999 (celular) o 0234567890 (convencional)
         const regex = /^0[2-9]\d{8}$/;
         return regex.test(telefono.trim());
     }
@@ -263,39 +258,62 @@
         const tipoVentaSelect = document.getElementById('tipoVenta');
         const camposCredito = document.getElementById('campos-credito');
         const seccionMetodosPago = document.getElementById('seccion-metodos-pago');
+        const alertaPendiente = document.getElementById('alerta-pendiente');
+
+        // Campos ocultos que espera el controlador
         const esCreditoInput = document.getElementById('esCredito');
+        const fechaVencimientoCreditoHidden = document.getElementById('fechaVencimientoCredito');
+        const montoCreditoHidden = document.getElementById('montoCredito');
+        const medioPagoCreditoHidden = document.getElementById('medioPagoCredito');
+
+        // Campos de display
         const creditoDiasInput = document.getElementById('creditoDias');
-        const creditoFechaVencimientoInput = document.getElementById('creditoFechaVencimiento');
-        const creditoMontoTotalInput = document.getElementById('creditoMontoTotal');
+        const creditoFechaVencimientoDisplay = document.getElementById('creditoFechaVencimientoDisplay');
+        const creditoMontoTotalDisplay = document.getElementById('creditoMontoTotalDisplay');
 
         if (!tipoVentaSelect) return;
 
         tipoVentaSelect.addEventListener('change', function () {
             const esCredito = this.value === 'credito';
 
-            // Mostrar/ocultar campos
+            // Actualizar campo oculto EsCredito
+            if (esCreditoInput) {
+                esCreditoInput.value = esCredito ? 'true' : 'false';
+            }
+
+            // Mostrar/ocultar secciones
             if (camposCredito) {
                 camposCredito.style.display = esCredito ? 'block' : 'none';
             }
             if (seccionMetodosPago) {
                 seccionMetodosPago.style.display = esCredito ? 'none' : 'block';
             }
-            if (esCreditoInput) {
-                esCreditoInput.value = esCredito ? 'true' : 'false';
+            if (alertaPendiente) {
+                alertaPendiente.style.display = esCredito ? 'none' : 'block';
             }
 
-            // Limpiar métodos de pago si se selecciona crédito
             if (esCredito) {
+                // Limpiar métodos de pago
                 const paymentMethodsBody = document.getElementById('payment-methods-body');
                 if (paymentMethodsBody) {
                     paymentMethodsBody.innerHTML = '';
                 }
+
+                // Actualizar monto de crédito
                 actualizarMontoCredito();
+
+                // Establecer medio de pago como "deferred_income" (Código Dátil para crédito)
+                if (medioPagoCreditoHidden) {
+                    medioPagoCreditoHidden.value = 'otros';
+                }
             } else {
                 // Limpiar campos de crédito
                 if (creditoDiasInput) creditoDiasInput.value = '';
-                if (creditoFechaVencimientoInput) creditoFechaVencimientoInput.value = '';
-                if (creditoMontoTotalInput) creditoMontoTotalInput.value = '';
+                if (creditoFechaVencimientoDisplay) creditoFechaVencimientoDisplay.value = '';
+                if (creditoMontoTotalDisplay) creditoMontoTotalDisplay.value = '';
+                if (fechaVencimientoCreditoHidden) fechaVencimientoCreditoHidden.value = '';
+                if (montoCreditoHidden) montoCreditoHidden.value = '';
+                if (medioPagoCreditoHidden) medioPagoCreditoHidden.value = '';
             }
         });
 
@@ -312,12 +330,23 @@
                     const month = String(fechaVencimiento.getMonth() + 1).padStart(2, '0');
                     const day = String(fechaVencimiento.getDate()).padStart(2, '0');
 
-                    if (creditoFechaVencimientoInput) {
-                        creditoFechaVencimientoInput.value = `${year}-${month}-${day}`;
+                    const fechaFormateada = `${year}-${month}-${day}`;
+
+                    // Actualizar campo de display
+                    if (creditoFechaVencimientoDisplay) {
+                        creditoFechaVencimientoDisplay.value = fechaFormateada;
+                    }
+
+                    // Actualizar campo oculto que espera el controlador
+                    if (fechaVencimientoCreditoHidden) {
+                        fechaVencimientoCreditoHidden.value = fechaFormateada;
                     }
                 } else {
-                    if (creditoFechaVencimientoInput) {
-                        creditoFechaVencimientoInput.value = '';
+                    if (creditoFechaVencimientoDisplay) {
+                        creditoFechaVencimientoDisplay.value = '';
+                    }
+                    if (fechaVencimientoCreditoHidden) {
+                        fechaVencimientoCreditoHidden.value = '';
                     }
                 }
             });
@@ -325,8 +354,8 @@
     }
 
     function actualizarMontoCredito() {
-        const creditoMontoTotalInput = document.getElementById('creditoMontoTotal');
-        if (!creditoMontoTotalInput) return;
+        const creditoMontoTotalDisplay = document.getElementById('creditoMontoTotalDisplay');
+        const montoCreditoHidden = document.getElementById('montoCredito');
 
         const totalFacturaInput = esAseguradora
             ? document.getElementById('totalFacturaConSeguro')
@@ -334,7 +363,16 @@
 
         if (totalFacturaInput) {
             const total = parseFloat(totalFacturaInput.value || 0);
-            creditoMontoTotalInput.value = `$${total.toFixed(2)}`;
+
+            // Actualizar campo de display
+            if (creditoMontoTotalDisplay) {
+                creditoMontoTotalDisplay.value = `$${total.toFixed(2)}`;
+            }
+
+            // Actualizar campo oculto que espera el controlador
+            if (montoCreditoHidden) {
+                montoCreditoHidden.value = total.toFixed(2);
+            }
         }
     }
 
@@ -513,12 +551,35 @@
             } else {
                 // Validar campos de crédito
                 const creditoDias = document.getElementById('creditoDias')?.value;
+                const fechaVencimientoCredito = document.getElementById('fechaVencimientoCredito')?.value;
+                const montoCredito = document.getElementById('montoCredito')?.value;
+
                 if (!creditoDias || parseInt(creditoDias) <= 0) {
                     e.preventDefault();
                     Swal.fire({
                         icon: 'warning',
                         title: 'Datos de crédito incompletos',
                         text: 'Debe ingresar el plazo en días para la factura a crédito.'
+                    });
+                    return false;
+                }
+
+                if (!fechaVencimientoCredito) {
+                    e.preventDefault();
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Fecha de vencimiento requerida',
+                        text: 'Debe especificar la fecha de vencimiento del crédito.'
+                    });
+                    return false;
+                }
+
+                if (!montoCredito || parseFloat(montoCredito) <= 0) {
+                    e.preventDefault();
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Monto de crédito inválido',
+                        text: 'El monto de crédito debe ser mayor a cero.'
                     });
                     return false;
                 }
@@ -945,7 +1006,7 @@
             </td>
             <td>
                <input type="file" class="form-control payment-proof-file"
-                      name="PaymentMethods[${index}].PaymentProof"
+                      name="PaymentProofs"
                       accept=".jpeg,.jpg,.png,.pdf">
                <small class="text-muted">Opcional</small>
             </td>

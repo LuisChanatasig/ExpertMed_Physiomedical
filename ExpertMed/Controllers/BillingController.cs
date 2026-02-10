@@ -113,9 +113,9 @@ namespace ExpertMed.Controllers
         [HttpPost]
         [RequestSizeLimit(52428800)]
         public async Task<IActionResult> Billing(
-    [FromForm] Facturacions viewModel,
-    IFormFile comprobantePagoFile = null,
-    List<IFormFile> PaymentProofs = null)
+                   [FromForm] Facturacions viewModel,
+                   IFormFile comprobantePagoFile = null,
+                   List<IFormFile> PaymentProofs = null)
         {
             if (!ModelState.IsValid)
             {
@@ -143,19 +143,80 @@ namespace ExpertMed.Controllers
                 // Array de bytes dummy para cuando no hay comprobante
                 byte[] dummyBytes = new byte[] { 0x00 };
 
-                // Determinar si usar sistema antiguo o nuevo
+                // Determinar si usar múltiples pagos o crédito
                 bool usarMultiplesPagos = viewModel.PaymentMethods != null && viewModel.PaymentMethods.Any();
+                bool esCredito = viewModel.EsCredito;
 
-                if (usarMultiplesPagos)
+                // =============================================
+                // VALIDACIONES SEGÚN TIPO DE FACTURA
+                // =============================================
+
+                if (esCredito)
                 {
-                    // Validar suma de pagos
+                    // Validaciones para factura a crédito
+                    if (!viewModel.FechaVencimientoCredito.HasValue)
+                    {
+                        TempData["ErrorMessage"] = "La fecha de vencimiento es requerida para facturas a crédito.";
+                        return View("Facturacion", viewModel);
+                    }
+
+                    if (!viewModel.MontoCredito.HasValue || viewModel.MontoCredito.Value <= 0)
+                    {
+                        TempData["ErrorMessage"] = "El monto de crédito debe ser mayor a cero.";
+                        return View("Facturacion", viewModel);
+                    }
+
+                    if (viewModel.FechaVencimientoCredito.Value.Date <= DateTime.Now.Date)
+                    {
+                        TempData["ErrorMessage"] = "La fecha de vencimiento debe ser posterior a la fecha actual.";
+                        return View("Facturacion", viewModel);
+                    }
+
+                    if (viewModel.MontoCredito.Value > viewModel.TotalFactura)
+                    {
+                        TempData["ErrorMessage"] = "El monto de crédito no puede ser mayor al total de la factura.";
+                        return View("Facturacion", viewModel);
+                    }
+
+                    // Si hay pagos parciales + crédito
+                    if (usarMultiplesPagos)
+                    {
+                        var totalPagos = viewModel.PaymentMethods.Sum(p => p.PaymentAmount);
+                        var saldoPendiente = viewModel.TotalFactura - totalPagos;
+
+                        if (Math.Abs(saldoPendiente - viewModel.MontoCredito.Value) > 0.01m)
+                        {
+                            TempData["ErrorMessage"] = $"El monto a crédito ({viewModel.MontoCredito.Value:F2}) debe coincidir con el saldo pendiente ({saldoPendiente:F2}).";
+                            return View("Facturacion", viewModel);
+                        }
+                    }
+                    else
+                    {
+                        // Crédito total - validar que el monto a crédito sea igual al total
+                        if (Math.Abs(viewModel.MontoCredito.Value - viewModel.TotalFactura) > 0.01m)
+                        {
+                            TempData["ErrorMessage"] = $"Para crédito total, el monto a crédito debe ser igual al total de la factura.";
+                            return View("Facturacion", viewModel);
+                        }
+                    }
+                }
+                else if (usarMultiplesPagos)
+                {
+                    // Validar suma de pagos para facturas de contado con múltiples pagos
                     var totalPagos = viewModel.PaymentMethods.Sum(p => p.PaymentAmount);
                     if (Math.Abs(totalPagos - viewModel.TotalFactura) > 0.01m)
                     {
                         TempData["ErrorMessage"] = $"La suma de los pagos ({totalPagos:F2}) no coincide con el total ({viewModel.TotalFactura:F2}).";
                         return View("Facturacion", viewModel);
                     }
+                }
 
+                // =============================================
+                // PROCESAMIENTO DE COMPROBANTES
+                // =============================================
+
+                if (usarMultiplesPagos)
+                {
                     // Procesar comprobantes múltiples
                     if (PaymentProofs != null && PaymentProofs.Count > 0)
                     {
@@ -169,7 +230,6 @@ namespace ExpertMed.Controllers
                             }
                             else
                             {
-                                // Asignar dummy bytes si no hay archivo
                                 viewModel.PaymentMethods[i].PaymentProof = dummyBytes;
                             }
                         }
@@ -183,9 +243,9 @@ namespace ExpertMed.Controllers
                         }
                     }
                 }
-                else
+                else if (!esCredito)
                 {
-                    // Sistema antiguo: un solo comprobante
+                    // Sistema antiguo: un solo comprobante (solo para facturas de contado)
                     if (comprobantePagoFile != null && comprobantePagoFile.Length > 0)
                     {
                         using var ms = new MemoryStream();
@@ -194,31 +254,43 @@ namespace ExpertMed.Controllers
                     }
                     else
                     {
-                        // Asignar dummy bytes
                         viewModel.ComprobantePagoFacturacion = dummyBytes;
                     }
                 }
 
-                // Llamar al servicio
+                // =============================================
+                // LLAMAR AL SERVICIO
+                // =============================================
+
                 string response = await _facturacion.CreateAndSendInvoiceAsync(
-                    viewModel.CitaId ?? 0,
-                    DateTime.Now,
-                    viewModel.TotalFactura,
-                    usarMultiplesPagos ? null : viewModel.MetodoPago,
-                    usarMultiplesPagos ? null : viewModel.ComprobantePagoFacturacion,
-                    viewModel.BillingDetailsNames,
-                    viewModel.BillingDetailsCiNumber,
-                    viewModel.BillingDetailsDocumentType,
-                    viewModel.BillingDetailsAddress,
-                    viewModel.BillingDetailsPhone,
-                    viewModel.BillingDetailsEmail,
-                    viewModel.InsuranceCompanyId,
-                    viewModel.Items,
-                    usarMultiplesPagos ? viewModel.PaymentMethods : null
+                    citaId: viewModel.CitaId ?? 0,
+                    fechaFacturacion: DateTime.Now,
+                    totalFactura: viewModel.TotalFactura,
+                    metodoPago: (usarMultiplesPagos || esCredito) ? null : viewModel.MetodoPago,
+                    comprobantePagoFacturacion: (usarMultiplesPagos || esCredito) ? null : viewModel.ComprobantePagoFacturacion,
+                    billingDetailsNames: viewModel.BillingDetailsNames,
+                    billingDetailsCiNumber: viewModel.BillingDetailsCiNumber,
+                    billingDetailsDocumentType: viewModel.BillingDetailsDocumentType,
+                    billingDetailsAddress: viewModel.BillingDetailsAddress,
+                    billingDetailsPhone: viewModel.BillingDetailsPhone,
+                    billingDetailsEmail: viewModel.BillingDetailsEmail,
+                    insuranceCompanyId: viewModel.InsuranceCompanyId,
+                    items: viewModel.Items,
+                    paymentMethods: usarMultiplesPagos ? viewModel.PaymentMethods : null,
+                    // NUEVOS PARÁMETROS DE CRÉDITO
+                    esCredito: viewModel.EsCredito,
+                    fechaVencimientoCredito: viewModel.FechaVencimientoCredito,
+                    montoCredito: viewModel.MontoCredito,
+                    medioPagoCredito: viewModel.MedioPagoCredito
                 );
 
-                _logger.LogInformation("Factura generada con éxito para la cita ID: {CitaId}", viewModel.CitaId);
-                TempData["SuccessMessage"] = "Factura generada y enviada correctamente.";
+                _logger.LogInformation("Factura {TipoFactura} generada con éxito para la cita ID: {CitaId}",
+                    esCredito ? "A CRÉDITO" : "DE CONTADO", viewModel.CitaId);
+
+                TempData["SuccessMessage"] = esCredito
+                    ? $"Factura a crédito generada correctamente. Vencimiento: {viewModel.FechaVencimientoCredito:dd/MM/yyyy}"
+                    : "Factura generada y enviada correctamente.";
+
                 return RedirectToAction("AppointmentList", "Appointment");
             }
             catch (Exception ex)

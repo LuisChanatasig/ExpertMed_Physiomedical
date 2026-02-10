@@ -23,6 +23,9 @@ namespace ExpertMed.Services
             _logger = logger;
             _httpClient = httpClient; // HttpClient inyectado
         }
+        /// <summary>
+        /// Crea y envía una factura a Datil con soporte para crédito
+        /// </summary>
         public async Task<string> CreateAndSendInvoiceAsync(
             int citaId,
             DateTime fechaFacturacion,
@@ -37,7 +40,12 @@ namespace ExpertMed.Services
             string billingDetailsEmail,
             int? insuranceCompanyId,
             List<BillingItemDTO> items,
-            List<PaymentMethodDTO> paymentMethods = null)
+            List<PaymentMethodDTO> paymentMethods = null,
+            // NUEVOS PARÁMETROS PARA CRÉDITO
+            bool esCredito = false,
+            DateTime? fechaVencimientoCredito = null,
+            decimal? montoCredito = null,
+            string medioPagoCredito = null)
         {
             string jsonFactura = string.Empty;
             string xKey = string.Empty;
@@ -45,6 +53,22 @@ namespace ExpertMed.Services
 
             try
             {
+                // Validaciones de crédito
+                if (esCredito)
+                {
+                    if (!fechaVencimientoCredito.HasValue)
+                        throw new ArgumentException("La fecha de vencimiento es requerida para facturas a crédito.");
+
+                    if (!montoCredito.HasValue || montoCredito.Value <= 0)
+                        throw new ArgumentException("El monto de crédito debe ser mayor a cero.");
+
+                    if (fechaVencimientoCredito.Value.Date <= fechaFacturacion.Date)
+                        throw new ArgumentException("La fecha de vencimiento debe ser posterior a la fecha de emisión.");
+
+                    if (montoCredito.Value > totalFactura)
+                        throw new ArgumentException("El monto de crédito no puede ser mayor al total de la factura.");
+                }
+
                 using (var connection = new SqlConnection(_context.Database.GetConnectionString()))
                 {
                     await connection.OpenAsync();
@@ -62,18 +86,18 @@ namespace ExpertMed.Services
                         }
                     }
 
-                    // 2. Ejecutar el SP
+                    // 2. Ejecutar el SP con los nuevos parámetros de crédito
                     using (var command = new SqlCommand("sp_billing", connection))
                     {
                         command.CommandType = CommandType.StoredProcedure;
                         command.CommandTimeout = 60;
 
+                        // Parámetros existentes
                         command.Parameters.AddWithValue("@CitaId", citaId);
                         command.Parameters.AddWithValue("@FechaFacturacion", fechaFacturacion);
                         command.Parameters.AddWithValue("@TotalFactura", totalFactura);
                         command.Parameters.AddWithValue("@MetodoPago", (object)metodoPago ?? DBNull.Value);
 
-                        // IMPORTANTE: Especificar el tipo SqlDbType.VarBinary
                         var comprobanteParam = new SqlParameter("@ComprobantePago", SqlDbType.VarBinary)
                         {
                             Value = comprobantePagoFacturacion != null ? (object)comprobantePagoFacturacion : DBNull.Value
@@ -87,6 +111,12 @@ namespace ExpertMed.Services
                         command.Parameters.AddWithValue("@billing_details_address", (object)billingDetailsAddress ?? DBNull.Value);
                         command.Parameters.AddWithValue("@billing_details_phone", (object)billingDetailsPhone ?? DBNull.Value);
                         command.Parameters.AddWithValue("@billing_details_email", (object)billingDetailsEmail ?? DBNull.Value);
+
+                        // NUEVOS PARÁMETROS DE CRÉDITO
+                        command.Parameters.AddWithValue("@EsCredito", esCredito);
+                        command.Parameters.AddWithValue("@FechaVencimientoCredito", (object)fechaVencimientoCredito ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@MontoCredito", (object)montoCredito ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@MedioPagoCredito", (object)medioPagoCredito ?? DBNull.Value);
 
                         // Items
                         var table = new DataTable();
@@ -122,7 +152,7 @@ namespace ExpertMed.Services
                         var paymentTable = new DataTable();
                         paymentTable.Columns.Add("payment_method", typeof(string));
                         paymentTable.Columns.Add("payment_amount", typeof(decimal));
-                        paymentTable.Columns.Add("payment_proof", typeof(byte[])); // IMPORTANTE: tipo byte[]
+                        paymentTable.Columns.Add("payment_proof", typeof(byte[]));
                         paymentTable.Columns.Add("payment_notes", typeof(string));
 
                         if (paymentMethods != null && paymentMethods.Any())
@@ -132,7 +162,7 @@ namespace ExpertMed.Services
                                 paymentTable.Rows.Add(
                                     pm.PaymentMethod,
                                     pm.PaymentAmount,
-                                    pm.PaymentProof ?? (object)DBNull.Value, // Se maneja NULL correctamente
+                                    pm.PaymentProof ?? (object)DBNull.Value,
                                     pm.PaymentNotes ?? (object)DBNull.Value
                                 );
                             }
@@ -150,9 +180,9 @@ namespace ExpertMed.Services
 
                     // 3. Obtener credenciales Dátil
                     using (var command = new SqlCommand(@"
-                SELECT users_xkeytaxo, users_xpasstaxo 
-                FROM users 
-                WHERE users_id = (SELECT appointment_createuser FROM appointment WHERE appointment_id = @CitaId)", connection))
+                        SELECT users_xkeytaxo, users_xpasstaxo 
+                        FROM users 
+                        WHERE users_id = (SELECT appointment_createuser FROM appointment WHERE appointment_id = @CitaId)", connection))
                     {
                         command.Parameters.AddWithValue("@CitaId", citaId);
                         using (var reader = await command.ExecuteReaderAsync())
@@ -204,6 +234,9 @@ namespace ExpertMed.Services
                         }
                     }
 
+                    _logger.LogInformation("Factura {TipoFactura} enviada exitosamente para cita {CitaId}",
+                        esCredito ? "A CRÉDITO" : "DE CONTADO", citaId);
+
                     return responseContent;
                 }
             }
@@ -213,6 +246,7 @@ namespace ExpertMed.Services
                 throw;
             }
         }
+    
 
 
         public async Task<string> CreateAndSendInvoice_lab(

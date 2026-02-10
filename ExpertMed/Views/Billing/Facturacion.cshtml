@@ -77,11 +77,16 @@
 <div class="row">
     <div class="col-xl-12">
         <form asp-action="Billing" asp-controller="Billing" method="post" enctype="multipart/form-data" id="billingForm">
-            <!-- Hidden inputs -->
+            <!-- Hidden inputs - CRÍTICOS PARA EL CONTROLADOR -->
             <input type="hidden" name="CitaId" value="@ViewBag.AppointmentId" />
             <input type="hidden" name="AppointmentPatientId" value="@ViewBag.AppointmentPatientId" />
             <input type="hidden" id="insuranceCompanyIdHidden" name="InsuranceCompanyId" value="@ViewBag.InsuranceCompanyId" />
+
+            <!-- CAMPOS OCULTOS PARA CRÉDITO - Estos son los que espera el controlador -->
             <input type="hidden" id="esCredito" name="EsCredito" value="false" />
+            <input type="hidden" id="fechaVencimientoCredito" name="FechaVencimientoCredito" value="" />
+            <input type="hidden" id="montoCredito" name="MontoCredito" value="" />
+            <input type="hidden" id="medioPagoCredito" name="MedioPagoCredito" value="" />
 
             <!-- SECCIÓN 1: Datos de Facturación -->
             <div class="card card-facturacion">
@@ -240,18 +245,18 @@
                                 <div class="col-md-4">
                                     <label class="form-label">Plazo (días) <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control" id="creditoDias"
-                                           name="CreditoDias" min="1" max="360" placeholder="Ej: 30">
+                                           min="1" max="360" placeholder="Ej: 30">
                                     <small class="text-muted">Días para vencimiento</small>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Fecha Vencimiento</label>
-                                    <input type="date" class="form-control bg-light" id="creditoFechaVencimiento"
-                                           name="CreditoFechaVencimiento" readonly>
+                                    <input type="date" class="form-control bg-light" id="creditoFechaVencimientoDisplay"
+                                           readonly>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Monto Total a Crédito</label>
                                     <input type="text" class="form-control bg-warning-subtle fw-bold"
-                                           id="creditoMontoTotal" readonly>
+                                           id="creditoMontoTotalDisplay" readonly>
                                 </div>
                             </div>
                         </div>
@@ -352,7 +357,7 @@
                     </div>
 
                     <!-- Pendiente -->
-                    <div class="alert alert-warning border-0 mt-3">
+                    <div class="alert alert-warning border-0 mt-3" id="alerta-pendiente">
                         <div class="d-flex justify-content-between align-items-center">
                             <strong>Pendiente por cubrir con métodos de pago:</strong>
                             <span class="badge bg-warning fs-5">$<span id="total-pendiente">0.00</span></span>
