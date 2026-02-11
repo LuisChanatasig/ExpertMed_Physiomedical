@@ -98,20 +98,7 @@
                                 <i class="mdi mdi-clipboard-list-outline"></i> Activas y Emergencias
                             </button>
 
-                            @* Ocultamos o eliminamos los botones individuales de "Activas" y "Emergencias" * /
-                            @* Puedes eliminarlos completamente si no los necesitas, o mantenerlos comentados como referencia. *@
-                            @*
-                            @foreach (var estado in new[] {
-                                (1, "Activas", "btn-soft-warning"), // Este se oculta/elimina
-                                (5, "EMERGENCIAS", "bg-danger text-white fw-bold text-uppercase") // Este se oculta/elimina
-                            })
-                            {
-                                <button class="btn @estado.Item3"
-                                        onclick="filterAppointments(@estado.Item1)">
-                                    @estado.Item2
-                                </button>
-                            }
-                            *@
+             
 
                             @* Mantendremos los otros estados si son necesarios individualmente *@
                             @foreach (var estado in new[] {
@@ -297,6 +284,14 @@
                                                 <i class="ri-money-dollar-circle-line"></i> Pagar
                                             </button>
                                         }
+                                         @* 🔹 BOTÓN REGISTRAR PAGO (FACTURA A CRÉDITO) *@
+        @if (appt.AppointmentPaymentStatus == 2)
+        {
+            <button class="btn btn-sm btn-soft-primary"
+                    onclick="setAppointmentData(@appt.AppointmentId, @appt.AppointmentPatientId); registerCreditPayment();">
+                <i class="ri-bank-card-line"></i> Registrar Pago
+            </button>
+        }
 
                                         @* NUEVO BOTÓN: Pagar Laboratorio directamente desde la fila *@
                                         @if (appt.HasLaboratories && perfilId != 2)
@@ -562,6 +557,56 @@
     </div>
 </div>
 
+<div class="modal fade" id="creditPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Registrar Pago (Crédito)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <input type="hidden" id="creditAppointmentId" />
+                <input type="hidden" id="creditBillingId" />
+
+                <div class="mb-3">
+                    <label>Método de Pago</label>
+                    <select id="creditPaymentMethod" class="form-control">
+                        <option value="efectivo">Efectivo</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="tarjeta">Tarjeta</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label>Monto</label>
+                    <input type="number" step="0.01" id="creditPaymentAmount" class="form-control" />
+                </div>
+
+                <div class="mb-3" hidden>
+                    <label>Comprobante</label>
+                    <input type="file" id="creditPaymentProof" class="form-control" />
+                </div>
+
+                <div class="mb-3">
+                    <label>Notas</label>
+                    <textarea id="creditPaymentNotes" class="form-control"></textarea>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary" onclick="AppointmentManager.submitCreditPayment()">
+                    Registrar Pago
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 <!-- OFFCANVAS Signos Vitales -->
 <div class="offcanvas offcanvas-end" id="vitalSignsCanvas" tabindex="-1" aria-labelledby="vitalSignsCanvasLabel">
     <div class="offcanvas-header">
@@ -694,7 +739,9 @@
             CONSULTATION_FOLLOWUP: '@Url.Action("ConsultationFollowUp", "Consultation")',
             CONSULTATION_LIST: '@Url.Action("ConsultationList", "Consultation")',
             BILLING: '@Url.Action("Facturacion", "Billing")',
-            BILL_LABORATORY: '@Url.Action("FacturacionLaboratorio", "Billing")'
+            BILL_LABORATORY: '@Url.Action("FacturacionLaboratorio", "Billing")',
+                    REGISTER_PAYMENT: '@Url.Action("RegistrarPago", "Appointment")'
+
         };
     </script>
     <script>

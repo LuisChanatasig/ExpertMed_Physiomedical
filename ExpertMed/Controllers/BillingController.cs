@@ -1,4 +1,5 @@
-﻿using ExpertMed.Models;
+﻿using ClosedXML.Excel;
+using ExpertMed.Models;
 using ExpertMed.Services;
 using iTextSharp.text;
 using iTextSharp.text.pdf;
@@ -135,6 +136,7 @@ namespace ExpertMed.Controllers
                 }
 
                 TempData["ErrorMessage"] = "Verifique los datos ingresados.";
+                await FillBillingViewBag(viewModel.CitaId ?? 0); // RECARGA EL VIEWBAG
                 return View("Facturacion", viewModel);
             }
 
@@ -293,15 +295,30 @@ namespace ExpertMed.Controllers
 
                 return RedirectToAction("AppointmentList", "Appointment");
             }
+            // Y dentro del catch:
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al facturar cita ID: {CitaId}", viewModel.CitaId);
-                TempData["ErrorMessage"] = $"Error al generar la factura: {ex.Message}";
+                _logger.LogError(ex, "Error al facturar...");
+                TempData["ErrorMessage"] = $"Error: {ex.Message}";
+                await FillBillingViewBag(viewModel.CitaId ?? 0); // RECARGA EL VIEWBAG
                 return View("Facturacion", viewModel);
             }
         }
 
-
+        private async Task FillBillingViewBag(int appointmentId)
+        {
+            var cita = await _facturacion.GetAppointmentBillingDataAsync(appointmentId);
+            if (cita != null)
+            {
+                ViewBag.AppointmentId = cita.AppointmentId;
+                ViewBag.AppointmentPatientId = cita.PatientId;
+                ViewBag.PatientFullName = cita.PatientFullName;
+                ViewBag.HasInsurance = cita.InsuranceCompanyId != null;
+                ViewBag.InsuranceCompanyId = cita.InsuranceCompanyId ?? 0;
+                ViewBag.InsuranceCompanyName = cita.InsuranceCompanyName ?? "Sin compañía";
+                ViewBag.AuthorizationCode = cita.InsuranceAuthCode ?? "";
+            }
+        }
 
         [HttpPost]
         [RequestSizeLimit(52428800)]
@@ -423,19 +440,30 @@ namespace ExpertMed.Controllers
                 return View(new List<FacturaEmitidaDTO>());
             }
         }
+
+
         [HttpPost("Facturas/Filtrar")]
         public async Task<JsonResult> FiltrarFacturas([FromBody] FiltroFechasRequest request)
         {
             try
             {
+                // 1. Validación de entrada rápida
+                if (request == null)
+                {
+                    return Json(new { success = false, message = "Datos de filtro no válidos." });
+                }
+
+                // 2. Llamada al servicio (que ya trae SQL + Dátil)
                 var facturas = await _facturacion.ObtenerFacturasEmitidasAsync(request.FechaDesde, request.FechaHasta);
 
-                var facturasSerialized = facturas.Select(f => new
+                // 3. Proyección minimalista
+                // No necesitamos formatear fechas aquí, el JSON las manejará.
+                // Solo aseguramos nulos para evitar errores en el Front-end.
+                var data = facturas.Select(f => new
                 {
                     facturaId = f.FacturaId,
-                    secuencial = f.Secuencial,
-                    secuencialFormateado = f.SecuencialFormateado, // ⬅️ AGREGAR ESTA LÍNEA
-                    fecha = f.Fecha.ToString("yyyy-MM-ddTHH:mm:ss"),
+                    secuencial = f.Secuencial, // Ya viene como "001-003-000000..." desde el SP o Dátil
+                    fecha = f.Fecha,
                     paciente = f.Paciente ?? "(Sin nombre)",
                     medico = f.Medico ?? "(Sin médico)",
                     subtotal = f.Subtotal,
@@ -445,152 +473,90 @@ namespace ExpertMed.Controllers
                     aseguradora = f.Aseguradora ?? "Particular",
                     totalItems = f.TotalItems,
                     origen = f.Origen ?? "LOCAL"
-                }).ToList();
+                });
 
                 return Json(new
                 {
                     success = true,
-                    data = facturasSerialized,
-                    count = facturasSerialized.Count,
-                    fechaDesde = request.FechaDesde?.ToString("dd/MM/yyyy"),
-                    fechaHasta = request.FechaHasta?.ToString("dd/MM/yyyy")
+                    data = data,
+                    count = facturas.Count
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error en FiltrarFacturas: {ex.Message}");
-                Console.WriteLine($"StackTrace: {ex.StackTrace}");
+                // Loguear el error de forma adecuada (preferiblemente con ILogger)
+                _logger.LogError(ex, "Error en FiltrarFacturas para el rango {Desde} - {Hasta}",
+                    request?.FechaDesde, request?.FechaHasta);
 
                 return Json(new
                 {
                     success = false,
-                    message = "Error al filtrar facturas: " + ex.Message,
-                    data = new List<object>()
+                    message = "Error interno al procesar la solicitud.",
+                    error = ex.Message // Solo para desarrollo, quitar en producción si es necesario
                 });
             }
         }
 
+
+        [HttpGet]
+        public async Task<IActionResult> ExportarFacturasExcel(DateTime? fDesde, DateTime? fHasta)
+        {
+            var datos = await _facturacion.ObtenerReporteExcelAsync(fDesde, fHasta);
+
+            using (var workbook = new XLWorkbook())
+            {
+                var worksheet = workbook.Worksheets.Add("Reporte");
+
+                // Encabezados manuales para asegurar el orden
+                string[] headers = { "Nro Factura", "Fecha Facturación", "Fecha Cita", "Paciente", "Médico", "Subtotal", "Pago", "Es Crédito", "Vencimiento", "Monto Crédito", "Aseguradora" };
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    worksheet.Cell(1, i + 1).Value = headers[i];
+                    worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                }
+
+                int row = 2;
+                foreach (var item in datos)
+                {
+                    worksheet.Cell(row, 1).SetValue(item.NroFactura);
+                    worksheet.Cell(row, 2).SetValue(item.FechaFacturacion);
+                    worksheet.Cell(row, 3).SetValue(item.FechaCita);
+                    worksheet.Cell(row, 4).SetValue(item.Paciente);
+
+                    // Forzamos la escritura para detectar si el error viene de atrás
+                    worksheet.Cell(row, 5).SetValue(string.IsNullOrEmpty(item.Medico) ? "MÉDICO NO ENCONTRADO EN DTO" : item.Medico);
+
+                    worksheet.Cell(row, 6).SetValue(item.Subtotal);
+                    worksheet.Cell(row, 7).SetValue(item.MedioDePago);
+                    worksheet.Cell(row, 8).SetValue(item.EsCredito);
+                    if (item.FechaVencimientoCredito.HasValue) worksheet.Cell(row, 9).SetValue(item.FechaVencimientoCredito.Value);
+                    worksheet.Cell(row, 10).SetValue(item.MontoAPagarCredito);
+                    worksheet.Cell(row, 11).SetValue(item.Aseguradora);
+                    row++;
+                }
+
+                // Formateo para evitar los ####### y asegurar legibilidad
+                worksheet.Column(2).Style.DateFormat.Format = "dd/MM/yyyy HH:mm";
+                worksheet.Column(3).Style.DateFormat.Format = "dd/MM/yyyy";
+                worksheet.Column(6).Style.NumberFormat.Format = "$ #,##0.00";
+                worksheet.Column(10).Style.NumberFormat.Format = "$ #,##0.00";
+
+                // Ajuste automático de ancho (Soluciona los #######)
+                worksheet.Columns().AdjustToContents();
+
+                using (var stream = new MemoryStream())
+                {
+                    workbook.SaveAs(stream);
+                    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"Reporte_{DateTime.Now:yyyyMMdd}.xlsx");
+                }
+            }
+        }
         // Asegúrate de que esta clase esté definida
         public class FiltroFechasRequest
         {
             public DateTime? FechaDesde { get; set; }
             public DateTime? FechaHasta { get; set; }
         }
-
-        //[HttpGet]
-        //public async Task<IActionResult> NotaVenta(int facturaId)
-        //{
-        //    var datosFactura = await _facturacion.GetFacturaConDetalleAsync(facturaId);
-        //    if (datosFactura == null)
-        //        return NotFound();
-
-        //    using (var stream = new MemoryStream())
-        //    {
-        //        var doc = new Document(PageSize.A4, 50, 50, 40, 40);
-        //        var writer = PdfWriter.GetInstance(doc, stream);
-        //        doc.Open();
-
-        //        var titleFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 18);
-        //        var subtitleFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 12);
-        //        var normalFont = FontFactory.GetFont(FontFactory.HELVETICA, 11);
-        //        var boldFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 11);
-
-        //        // Encabezado centrado
-        //        var empresa = new Paragraph("CLÍNICA MÉDICA EL BATÁN", titleFont);
-        //        empresa.Alignment = Element.ALIGN_CENTER;
-        //        doc.Add(empresa);
-
-        //        var ruc = new Paragraph("RUC: 1790012345001", normalFont);
-        //        ruc.Alignment = Element.ALIGN_CENTER;
-        //        doc.Add(ruc);
-
-        //        var direccion = new Paragraph("Dirección: Av. 6 de Diciembre y Bosmediano, Quito", normalFont);
-        //        direccion.Alignment = Element.ALIGN_CENTER;
-        //        doc.Add(direccion);
-
-        //        var telefono = new Paragraph("Teléfono: (02) 234-5678 / 099-876-5432", normalFont);
-        //        telefono.Alignment = Element.ALIGN_CENTER;
-        //        doc.Add(telefono);
-
-        //        doc.Add(new Paragraph(" "));
-        //        var nota = new Paragraph("NOTA DE VENTA", subtitleFont);
-        //        nota.Alignment = Element.ALIGN_CENTER;
-        //        doc.Add(nota);
-        //        doc.Add(new Paragraph(" "));
-
-        //        // Línea decorativa (simulación)
-        //        doc.Add(new Paragraph("--------------------------------------------------------------", normalFont) { Alignment = Element.ALIGN_CENTER });
-
-        //        // Datos del paciente
-        //        var infoTable = new PdfPTable(2) { WidthPercentage = 100 };
-        //        infoTable.SetWidths(new float[] { 25f, 75f });
-
-        //        infoTable.AddCell(new PdfPCell(new Phrase("Fecha:", boldFont)) { Border = 0 });
-        //        infoTable.AddCell(new PdfPCell(new Phrase(datosFactura.Fecha.ToString("dd/MM/yyyy"), normalFont)) { Border = 0 });
-
-        //        infoTable.AddCell(new PdfPCell(new Phrase("Paciente:", boldFont)) { Border = 0 });
-        //        infoTable.AddCell(new PdfPCell(new Phrase(datosFactura.Paciente, normalFont)) { Border = 0 });
-
-        //        infoTable.AddCell(new PdfPCell(new Phrase("Método de Pago:", boldFont)) { Border = 0 });
-        //        infoTable.AddCell(new PdfPCell(new Phrase(datosFactura.MetodoPago, normalFont)) { Border = 0 });
-
-        //        if (!string.IsNullOrWhiteSpace(datosFactura.Aseguradora))
-        //        {
-        //            infoTable.AddCell(new PdfPCell(new Phrase("Aseguradora:", boldFont)) { Border = 0 });
-        //            infoTable.AddCell(new PdfPCell(new Phrase(datosFactura.Aseguradora, normalFont)) { Border = 0 });
-        //        }
-
-        //        doc.Add(infoTable);
-        //        doc.Add(new Paragraph(" "));
-
-        //        // Tabla de ítems
-        //        var itemTable = new PdfPTable(4) { WidthPercentage = 100 };
-        //        itemTable.SetWidths(new float[] { 50f, 15f, 15f, 20f });
-
-        //        string[] headers = { "Descripción", "Cantidad", "P. Unitario", "Subtotal" };
-        //        foreach (var h in headers)
-        //        {
-        //            var cell = new PdfPCell(new Phrase(h, boldFont))
-        //            {
-        //                BackgroundColor = BaseColor.LIGHT_GRAY,
-        //                HorizontalAlignment = Element.ALIGN_CENTER
-        //            };
-        //            itemTable.AddCell(cell);
-        //        }
-
-        //        foreach (var item in datosFactura.Items)
-        //        {
-        //            itemTable.AddCell(new Phrase(item.Descripcion, normalFont));
-        //            itemTable.AddCell(new PdfPCell(new Phrase(item.Cantidad.ToString(), normalFont)) { HorizontalAlignment = Element.ALIGN_CENTER });
-        //            itemTable.AddCell(new PdfPCell(new Phrase($"${item.PrecioUnitario:F2}", normalFont)) { HorizontalAlignment = Element.ALIGN_RIGHT });
-
-        //            decimal subtotal = item.PrecioUnitario * item.Cantidad;
-        //            itemTable.AddCell(new PdfPCell(new Phrase($"${subtotal:F2}", normalFont)) { HorizontalAlignment = Element.ALIGN_RIGHT });
-        //        }
-
-        //        doc.Add(itemTable);
-        //        doc.Add(new Paragraph(" "));
-
-        //        // Totales
-        //        var totalTable = new PdfPTable(2) { WidthPercentage = 40, HorizontalAlignment = Element.ALIGN_RIGHT };
-        //        totalTable.SetWidths(new float[] { 60f, 40f });
-
-        //        totalTable.AddCell(new PdfPCell(new Phrase("Total Aseguradora:", boldFont)) { Border = 0 });
-        //        totalTable.AddCell(new PdfPCell(new Phrase($"${datosFactura.TotalAseguradora:F2}", normalFont)) { Border = 0, HorizontalAlignment = Element.ALIGN_RIGHT });
-
-        //        totalTable.AddCell(new PdfPCell(new Phrase("Total Copago:", boldFont)) { Border = 0 });
-        //        totalTable.AddCell(new PdfPCell(new Phrase($"${datosFactura.TotalCopago:F2}", normalFont)) { Border = 0, HorizontalAlignment = Element.ALIGN_RIGHT });
-
-        //        totalTable.AddCell(new PdfPCell(new Phrase("TOTAL:", boldFont)) { Border = 0 });
-        //        totalTable.AddCell(new PdfPCell(new Phrase($"${datosFactura.Subtotal:F2}", boldFont)) { Border = 0, HorizontalAlignment = Element.ALIGN_RIGHT });
-
-        //        doc.Add(totalTable);
-
-        //        doc.Close();
-        //        var pdfBytes = stream.ToArray();
-        //        return File(pdfBytes, "application/pdf", $"NotaVenta_{facturaId}.pdf");
-        //    }
-        //}
 
 
         /// <summary>

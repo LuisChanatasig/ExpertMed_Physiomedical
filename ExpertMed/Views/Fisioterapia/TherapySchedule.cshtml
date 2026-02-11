@@ -15,6 +15,31 @@
     };
 }
 
+@section Styles{
+    <style>
+        /* 1. Color del borde al enfocar (Focus) */
+        .select2-container--default.select2-container--focus .select2-selection--single {
+            border-color: #5b73e8 !important; /* Color primario de tu tema */
+        }
+
+        /* 2. Color de fondo de la opción seleccionada en la lista */
+        .select2-results__option--highlighted[aria-selected] {
+            background-color: #5b73e8 !important;
+            color: white !important;
+        }
+
+        /* 3. Ajustar la altura para que coincida con los inputs de Bootstrap */
+        .select2-container .select2-selection--single {
+            height: 38px !important;
+            padding-top: 5px;
+        }
+
+        /* 4. Color del texto del Placeholder */
+        .select2-container--default .select2-selection--single .select2-selection__placeholder {
+            color: #adb5bd;
+        }
+    </style>
+}
 <div id="session-metadata"
      data-config='@Html.Raw(System.Text.Json.JsonSerializer.Serialize(sessionData))'
      style="display:none;"></div>
@@ -56,7 +81,7 @@
                     }
                     else
                     {
-                        <select class="form-select" id="therapistId" required>
+                        <select class="form-select select2" id="therapistId" required>
                             <option value="">Seleccione terapeuta...</option>
                             @foreach (var t in ViewBag.Terapeutas as List<SelectDTO>)
                             {
@@ -176,6 +201,21 @@
 </div>
 
 @section scripts {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <script>
+        $(document).ready(function() {
+        $('.select2').select2({
+        placeholder: "Seleccione una opción",
+        allowClear: true,
+        width: '100%',
+        // Esta opción es útil si usas el select dentro de un modal de Bootstrap
+        dropdownParent: $('#therapyScheduleForm')
+        });
+        });
+    </script>
     <script src="~/assets/js/fisioterapia-agenda.js"></script>
 }

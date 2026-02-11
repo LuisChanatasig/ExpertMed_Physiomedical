@@ -56,6 +56,9 @@ function setAppointmentData(id, patientId) {
 function payAppointment() {
     AppointmentManager.payAppointment();
 }
+function registerCreditPayment() {
+    AppointmentManager.registerCreditPayment();
+}
 
 function sendReminderMessage() {
     AppointmentManager.sendReminder();

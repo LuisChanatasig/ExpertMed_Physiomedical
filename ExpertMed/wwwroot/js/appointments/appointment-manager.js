@@ -263,6 +263,94 @@ const AppointmentManager = {
     },
 
     /**
+ * Registrar pago para factura a crédito
+ */
+    registerCreditPayment() {
+        try {
+            const appointmentId = FormHelper.getRequiredValue('appointmentIdInput');
+            const patientId = FormHelper.getRequiredValue('appointmentPatientId');
+
+            // Guardamos temporalmente el id en el modal
+            document.getElementById('creditAppointmentId').value = appointmentId;
+
+            // Aquí deberías ya tener el billingId cargado previamente
+            // o puedes obtenerlo vía AJAX si lo necesitas
+
+            const modal = new bootstrap.Modal(document.getElementById('creditPaymentModal'));
+            modal.show();
+
+        } catch (error) {
+            ErrorHandler.showAlert('No se pudo iniciar el registro de pago');
+        }
+    },
+
+    /**
+ * Enviar pago de crédito al servidor
+ */
+    submitCreditPayment() {
+        try {
+
+            const appointmentId = document.getElementById('creditAppointmentId').value;
+            const paymentMethod = document.getElementById('creditPaymentMethod').value;
+            const paymentAmount = parseFloat(document.getElementById('creditPaymentAmount').value);
+            const paymentNotes = document.getElementById('creditPaymentNotes').value;
+            const fileInput = document.getElementById('creditPaymentProof');
+
+            let formData = new FormData();
+
+            formData.append("AppointmentId", appointmentId);
+            formData.append("PaymentMethod", paymentMethod);
+            formData.append("PaymentAmount", paymentAmount);
+            formData.append("PaymentNotes", paymentNotes);
+
+            if (fileInput.files.length > 0) {
+                formData.append("PaymentProof", fileInput.files[0]);
+            }
+
+            fetch(AppConfig.ENDPOINTS.REGISTER_PAYMENT, {
+                method: "POST",
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+
+                    if (data.success) {
+
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Éxito',
+                            text: data.message,
+                            confirmButtonText: 'Aceptar'
+                        }).then(() => {
+
+                            window.location.href = AppConfig.ENDPOINTS.APPOINTMENT_LIST;
+
+                        });
+
+                    } else {
+
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: data.message
+                        });
+
+                    }
+
+
+                })
+                .catch(error => {
+                    ErrorHandler.showAlert("Error al registrar el pago");
+                });
+
+        } catch (error) {
+            ErrorHandler.showAlert("Datos inválidos");
+        }
+    },
+
+
+
+    /**
      * Proceder al pago de laboratorios
      */
     payLaboratory() {

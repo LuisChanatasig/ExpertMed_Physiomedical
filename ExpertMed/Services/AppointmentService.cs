@@ -1,4 +1,5 @@
-﻿using ExpertMed.Models;
+﻿using DocumentFormat.OpenXml.InkML;
+using ExpertMed.Models;
 using iText.Commons.Actions.Contexts;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,30 @@ namespace ExpertMed.Services
             public TimeSpan AvailableTime { get; set; }
         }
 
+        public async Task<(bool success, string message)> RegistrarPagoAsync(RegistrarPagoRequest request)
+        {
+            try
+            {
+                var parameters = new[]
+                {
+            new SqlParameter("@AppointmentId", request.AppointmentId),
+            new SqlParameter("@PaymentMethod", request.PaymentMethod),
+            new SqlParameter("@PaymentAmount", request.PaymentAmount),
+            new SqlParameter("@PaymentProof", request.PaymentProof ?? (object)DBNull.Value),
+            new SqlParameter("@PaymentNotes", request.PaymentNotes ?? (object)DBNull.Value)
+        };
+
+                await _dbContext.Database.ExecuteSqlRawAsync(
+                    "EXEC dbo.sp_RegistrarPagoCita @AppointmentId, @PaymentMethod, @PaymentAmount, @PaymentProof, @PaymentNotes",
+                    parameters);
+
+                return (true, "Pago registrado correctamente");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
 
         public async Task<List<AppointmentDTO>> GetAllAppointmentAsync(
           int userProfile,

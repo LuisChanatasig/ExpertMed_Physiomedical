@@ -121,6 +121,56 @@ namespace ExpertMed.Controllers
         }
 
 
+        [HttpPost]
+        public async Task<IActionResult> RegistrarPago(
+          int AppointmentId,
+          string PaymentMethod,
+          decimal PaymentAmount,
+          IFormFile? PaymentProof,
+          string? PaymentNotes)
+        {
+            try
+            {
+                byte[] proofBytes;
+
+                // ✅ Si envían comprobante lo convertimos
+                if (PaymentProof != null && PaymentProof.Length > 0)
+                {
+                    using (var ms = new MemoryStream())
+                    {
+                        await PaymentProof.CopyToAsync(ms);
+                        proofBytes = ms.ToArray();
+                    }
+                }
+                else
+                {
+                    // ✅ Si NO envían comprobante guardamos un byte ligero
+                    proofBytes = new byte[] { 0x00 };
+                }
+
+                var request = new RegistrarPagoRequest
+                {
+                    AppointmentId = AppointmentId,
+                    PaymentMethod = PaymentMethod,
+                    PaymentAmount = PaymentAmount,
+                    PaymentProof = proofBytes,
+                    PaymentNotes = PaymentNotes
+                };
+
+                var result = await _appointmentService.RegistrarPagoAsync(request);
+
+                if (result.success)
+                    return Json(new { success = true, message = result.message });
+
+                return Json(new { success = false, message = result.message });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+
         /// <summary>
         /// Asynchronously prepares and returns the patient form view for creating or editing a patient record.
         /// </summary>

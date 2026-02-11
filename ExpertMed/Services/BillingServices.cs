@@ -414,39 +414,18 @@ namespace ExpertMed.Services
         public async Task<List<FacturaEmitidaDTO>> ObtenerFacturasEmitidasAsync(DateTime? fechaDesde = null, DateTime? fechaHasta = null)
         {
             var facturas = new List<FacturaEmitidaDTO>();
+            var desde = fechaDesde ?? fechaHasta ?? DateTime.Today;
+            var hasta = fechaHasta ?? fechaDesde ?? DateTime.Today;
 
-            // Si no se especifican fechas, usar el día actual por defecto
-            if (!fechaDesde.HasValue && !fechaHasta.HasValue)
-            {
-                fechaDesde = DateTime.Today;
-                fechaHasta = DateTime.Today;
-            }
-            else if (!fechaDesde.HasValue)
-            {
-                fechaDesde = fechaHasta.Value.Date;
-            }
-            else if (!fechaHasta.HasValue)
-            {
-                fechaHasta = fechaDesde.Value.Date;
-            }
-
-            // 1. Traer desde base de datos local (notas de venta)
+            // 1. SQL LOCAL
             using (var connection = new SqlConnection(_context.Database.GetConnectionString()))
             {
                 await connection.OpenAsync();
                 using (var command = new SqlCommand("sp_ListarFacturasEmitidas", connection))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-
-                    // Agregar parámetros de fecha al stored procedure
-                    command.Parameters.Add(new SqlParameter("@FechaDesde", SqlDbType.Date)
-                    {
-                        Value = fechaDesde.Value.Date
-                    });
-                    command.Parameters.Add(new SqlParameter("@FechaHasta", SqlDbType.Date)
-                    {
-                        Value = fechaHasta.Value.Date
-                    });
+                    command.Parameters.Add(new SqlParameter("@FechaDesde", SqlDbType.Date) { Value = desde.Date });
+                    command.Parameters.Add(new SqlParameter("@FechaHasta", SqlDbType.Date) { Value = hasta.Date });
 
                     using (var reader = await command.ExecuteReaderAsync())
                     {
@@ -455,23 +434,15 @@ namespace ExpertMed.Services
                             facturas.Add(new FacturaEmitidaDTO
                             {
                                 FacturaId = reader.GetInt32(reader.GetOrdinal("FacturaId")),
-                                Secuencial = reader.GetInt32(reader.GetOrdinal("Secuencial")),
+                                Secuencial = reader.GetString(reader.GetOrdinal("Secuencial")), // Viene "001-003-..."
                                 Fecha = reader.GetDateTime(reader.GetOrdinal("Fecha")),
-                                Paciente = reader.IsDBNull(reader.GetOrdinal("Paciente"))
-                                           ? "(Sin nombre)"
-                                           : reader.GetString(reader.GetOrdinal("Paciente")),
-                                Medico = reader.IsDBNull(reader.GetOrdinal("Medico"))
-                                         ? "(Sin médico)"
-                                         : reader.GetString(reader.GetOrdinal("Medico")),
+                                Paciente = reader.IsDBNull(reader.GetOrdinal("Paciente")) ? "(Sin nombre)" : reader.GetString(reader.GetOrdinal("Paciente")),
+                                Medico = reader.IsDBNull(reader.GetOrdinal("Medico")) ? "(Sin médico)" : reader.GetString(reader.GetOrdinal("Medico")),
                                 Subtotal = reader.GetDecimal(reader.GetOrdinal("Subtotal")),
                                 TotalAseguradora = reader.GetDecimal(reader.GetOrdinal("TotalAseguradora")),
                                 TotalCopago = reader.GetDecimal(reader.GetOrdinal("TotalCopago")),
-                                MetodoPago = reader.IsDBNull(reader.GetOrdinal("MetodoPago"))
-                                             ? "-"
-                                             : reader.GetString(reader.GetOrdinal("MetodoPago")),
-                                Aseguradora = reader.IsDBNull(reader.GetOrdinal("Aseguradora"))
-                                              ? "Particular"
-                                              : reader.GetString(reader.GetOrdinal("Aseguradora")),
+                                MetodoPago = reader.IsDBNull(reader.GetOrdinal("MetodoPago")) ? "-" : reader.GetString(reader.GetOrdinal("MetodoPago")),
+                                Aseguradora = reader.IsDBNull(reader.GetOrdinal("Aseguradora")) ? "Particular" : reader.GetString(reader.GetOrdinal("Aseguradora")),
                                 TotalItems = reader.GetInt32(reader.GetOrdinal("TotalItems")),
                                 Origen = "LOCAL"
                             });
@@ -480,39 +451,31 @@ namespace ExpertMed.Services
                 }
             }
 
-            // 2. Traer desde Dátil (facturas autorizadas) - también filtrar por fechas
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Token", "token=7278cc50a72640eea6384a075b8e8335");
-
-            // Formatear fechas para la API de Dátil (formato YYYY-MM-DD)
-            var fromDate = fechaDesde.Value.ToString("yyyy-MM-dd");
-            var toDate = fechaHasta.Value.ToString("yyyy-MM-dd");
-            var url = $"https://link.datil.co/invoices?from={fromDate}&to={toDate}";
-
-            try
+            // 2. DÁTIL API
+            using (var client = new HttpClient())
             {
-                var response = await client.GetAsync(url);
-                if (response.IsSuccessStatusCode)
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Token", "token=7278cc50a72640eea6384a075b8e8335");
+                var url = $"https://link.datil.co/invoices?from={desde:yyyy-MM-dd}&to={hasta:yyyy-MM-dd}";
+
+                try
                 {
-                    var content = await response.Content.ReadAsStringAsync();
-                    var json = JsonDocument.Parse(content);
-
-                    foreach (var f in json.RootElement.EnumerateArray())
+                    var response = await client.GetAsync(url);
+                    if (response.IsSuccessStatusCode)
                     {
-                        var fechaEmision = f.GetProperty("issued_at").GetDateTime().Date;
-
-                        // Verificar que la fecha esté en el rango (doble verificación)
-                        if (fechaEmision >= fechaDesde.Value.Date && fechaEmision <= fechaHasta.Value.Date)
+                        var content = await response.Content.ReadAsStringAsync();
+                        using var json = JsonDocument.Parse(content);
+                        foreach (var f in json.RootElement.EnumerateArray())
                         {
                             facturas.Add(new FacturaEmitidaDTO
                             {
                                 FacturaId = 0,
+                                Secuencial = f.GetProperty("number").GetString(), // Dátil ya manda su propio formato (ej: 001-001-...)
                                 Fecha = f.GetProperty("issued_at").GetDateTime(),
                                 Paciente = f.GetProperty("client").GetProperty("name").GetString(),
                                 Subtotal = f.GetProperty("totals").GetProperty("subtotal_without_tax").GetDecimal(),
                                 TotalAseguradora = 0,
                                 TotalCopago = f.GetProperty("totals").GetProperty("total").GetDecimal(),
-                                MetodoPago = "-", // Dátil no da forma de pago
+                                MetodoPago = "ELECTRÓNICA",
                                 Aseguradora = f.GetProperty("client").GetProperty("identification").GetString(),
                                 TotalItems = f.GetProperty("items").GetArrayLength(),
                                 Origen = "DATIL"
@@ -520,16 +483,11 @@ namespace ExpertMed.Services
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                // Log del error con Dátil, pero continúa con los datos locales
-                Console.WriteLine($"Error al obtener facturas de Dátil: {ex.Message}");
+                catch (Exception ex) { /* Loguear error de conexión */ }
             }
 
             return facturas.OrderByDescending(f => f.Fecha).ToList();
         }
-
 
         public async Task<FacturaDetalleDTO?> GetFacturaConDetalleAsync(int facturaId)
         {
@@ -756,6 +714,48 @@ WHERE b.billing_id = @FacturaId;
             {
                 _logger.LogError(ex, "Error en ProcesarFacturaTerapia para Usuario: {UsuarioId}", usuarioId);
                 throw;
+            }
+        }
+
+        public async Task<List<ReporteFacturaExcelDTO>> ObtenerReporteExcelAsync(DateTime? desde, DateTime? hasta)
+        {
+            using (var connection = new SqlConnection(_context.Database.GetConnectionString()))
+            {
+                var parameters = new { FechaDesde = desde, FechaHasta = hasta };
+
+                // 1. Obtenemos los datos como 'dynamic' para poder leer las columnas con espacios
+                var result = await connection.QueryAsync<dynamic>(
+                    "sp_ReporteFacturasExcel",
+                    parameters,
+                    commandType: CommandType.StoredProcedure
+                );
+
+                // 2. Mapeo Manual: Usamos el nombre EXACTO de la columna entre corchetes
+                return result.Select(f => {
+                    var row = (IDictionary<string, object>)f;
+
+                    return new ReporteFacturaExcelDTO
+                    {
+                        // Accedemos por el nombre con espacios que devuelve tu SP
+                        NroFactura = row["Nro Factura"]?.ToString(),
+
+                        // Conversión segura de fechas para evitar el error de "1/1/0001"
+                        FechaFacturacion = row["Fecha Facturación"] != null ? Convert.ToDateTime(row["Fecha Facturación"]) : DateTime.MinValue,
+                        FechaCita = row["Fecha Cita"] != null ? Convert.ToDateTime(row["Fecha Cita"]) : DateTime.MinValue,
+
+                        Paciente = row["Paciente"]?.ToString(),
+                        Medico = row["Médico"]?.ToString(), // Mapeo de la tilde
+
+                        Subtotal = row["Subtotal"] != null ? Convert.ToDecimal(row["Subtotal"]) : 0m,
+                        MedioDePago = row["Medio de Pago"]?.ToString(),
+                        EsCredito = row["Es Crédito"]?.ToString(),
+
+                        FechaVencimientoCredito = row["Fecha Vencimiento Crédito"] != null ? Convert.ToDateTime(row["Fecha Vencimiento Crédito"]) : (DateTime?)null,
+
+                        MontoAPagarCredito = row["Monto a Pagar Crédito"] != null ? Convert.ToDecimal(row["Monto a Pagar Crédito"]) : 0m,
+                        Aseguradora = row["Aseguradora"]?.ToString()
+                    };
+                }).ToList();
             }
         }
     }
