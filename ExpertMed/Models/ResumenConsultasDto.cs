@@ -1,27 +1,26 @@
 ﻿namespace ExpertMed.Models
 {
-    public class ResumenConsultasDto
+    public class ResumenTerapiasDto
     {
         // Dataset 1: KPIs
         public DashboardKpi Kpi { get; set; } = new DashboardKpi();
 
-        // Dataset 2: Evolución Diaria
-        public List<DashboardEvolutionItem> EvolucionDiaria { get; set; } = new List<DashboardEvolutionItem>();
+        // Dataset 2: Evolución diaria de terapias
+        public List<DashboardEvolutionItem> EvolucionDiaria { get; set; } = new();
 
-        // Dataset 3: Estado Citas (Pastel)
-        public List<DashboardStatusItem> EstadoCitas { get; set; } = new List<DashboardStatusItem>();
+        // Dataset 3: Estado / avance de terapias
+        public List<DashboardStatusItem> EstadoTerapias { get; set; } = new();
 
-        // Dataset 4: Ranking Médicos
-        public List<DashboardDoctorItem> RankingMedicos { get; set; } = new List<DashboardDoctorItem>();
+        // Dataset 4: Ranking por tipo de terapia
+        public List<DashboardTipoTerapiaItem> RankingTiposTerapia { get; set; } = new();
 
-        // Dataset 5: Pacientes por Seguro
-        public List<DashboardInsuranceItem> PacientesPorSeguro { get; set; } = new List<DashboardInsuranceItem>();
+        // Dataset 5: Terapias por tipo
+        public List<DashboardTerapiaTipoItem> TerapiasPorTipo { get; set; } = new();
 
-        // Clases anidadas para estructura interna
         public class DashboardKpi
         {
-            public int TotalCitas { get; set; }
-            public int TotalConsultas { get; set; }
+            public int TotalSesiones { get; set; }
+            public int TotalTerapias { get; set; }
             public int TotalPagadas { get; set; }
             public int TotalPacientesHistorico { get; set; }
         }
@@ -29,7 +28,7 @@
         public class DashboardEvolutionItem
         {
             public DateTime Fecha { get; set; }
-            public int CantidadCitas { get; set; }
+            public int CantidadSesiones { get; set; }
         }
 
         public class DashboardStatusItem
@@ -38,16 +37,16 @@
             public int Cantidad { get; set; }
         }
 
-        public class DashboardDoctorItem
+        public class DashboardTipoTerapiaItem
         {
-            public string Medico { get; set; } = string.Empty;
-            public int ConsultasRealizadas { get; set; }
+            public string TipoTerapia { get; set; } = string.Empty;
+            public int CantidadSesiones { get; set; }
         }
 
-        public class DashboardInsuranceItem
+        public class DashboardTerapiaTipoItem
         {
-            public string Seguro { get; set; } = string.Empty;
-            public int CantidadPacientesUnicos { get; set; }
+            public string TipoTerapia { get; set; } = string.Empty;
+            public int CantidadSesiones { get; set; }
         }
     }
 }

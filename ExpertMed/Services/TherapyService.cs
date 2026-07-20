@@ -46,16 +46,21 @@ namespace ExpertMed.Services
                 }
 
                 var parameters = new[]
-                {
-            new SqlParameter("@patient_id", model.PacienteId),
-            new SqlParameter("@therapist_id", model.TerapeutaId),
-            new SqlParameter("@creation_user", creationUser),
-            new SqlParameter("@sesiones", SqlDbType.Structured)
-            {
-                TypeName = "dbo.TerapiaSesionTipo",
-                Value = dataTable
-            }
-        };
+ {
+    new SqlParameter("@appointment_id", model.AppointmentId),
+
+    new SqlParameter("@patient_id", model.PacienteId),
+
+    new SqlParameter("@therapist_id", model.TerapeutaId),
+
+    new SqlParameter("@creation_user", creationUser),
+
+    new SqlParameter("@sesiones", SqlDbType.Structured)
+    {
+        TypeName = "dbo.TerapiaSesionTipo",
+        Value = dataTable
+    }
+};
 
                 using (var connection = new SqlConnection(_dbContext.Database.GetConnectionString()))
                 {

@@ -357,16 +357,7 @@
                         </button>
                     </div>
 
-                   @*  <div class="col-4" id="startConsultCol">
-                        <button class="btn btn-soft-dark btn-sm w-100" onclick="AppointmentManager.startConsultation()">
-                            <i class="las la-file-medical-alt"></i> Empezar Consulta
-                        </button>
-                    </div> *@
-              @*       <div class="col-4" id="startFollowupCol">
-                        <button class="btn btn-soft-dark btn-sm w-100" onclick="AppointmentManager.startFollowupConsultation()">
-                            <i class="las la-file-medical-alt"></i> Seguimiento
-                        </button>
-                    </div> *@
+             
 
                     <div class="col-4" id="reminderCol">
                         <button class="btn btn-soft-success btn-sm w-100" onclick="AppointmentManager.sendReminder()">
@@ -387,22 +378,26 @@
                                 <i class="ri-flask-line"></i> Pagar Lab.
                             </button>
                         </div>
-@* 
-                        <div class="col-4" id="vitalSignsCol">
-                            <button class="btn btn-soft-primary btn-sm w-100"
-                                    data-bs-toggle="offcanvas"
-                                    data-bs-target="#vitalSignsCanvas"
-                                    onclick="AppointmentManager.prepareVitalSigns()">
-                                <i class="ri-heart-pulse-line"></i> Signos Vitales
-                            </button>
-                        </div> *@
+
                     }
 
-                    <div class="col-4" id="viewHistoryCol">
-                        <button class="btn btn-soft-primary btn-sm w-100" onclick="AppointmentManager.viewPatientHistory()">
-                            <i class="ri-history-line"></i> Ver historial
-                        </button>
-                    </div>
+
+                 @if (perfilId == 7)
+                    {
+           <div class="col-4" id="therapyPlanCol">
+
+    <button
+        class="btn btn-soft-primary btn-sm w-100"
+        onclick="AppointmentManager.startTherapyPlan()">
+
+        <i class="ri-heart-pulse-line"></i>
+        Plan Terapéutico
+
+    </button>
+
+</div>
+
+                    }
                 </div>
             </div>
         </div>
@@ -737,7 +732,8 @@
             SEND_WHATSAPP_REMINDER: '@Url.Action("SendWhatsAppReminder", "Appointment")',
             NEW_CONSULTATION: '@Url.Action("NewConsultation", "Consultation")',
             CONSULTATION_FOLLOWUP: '@Url.Action("ConsultationFollowUp", "Consultation")',
-            CONSULTATION_LIST: '@Url.Action("ConsultationList", "Consultation")',
+            CONSULTATION_LIST: '@Url.Action("TherapySchedule", "Fisioterapia")',
+            START_THERAPY_PLAN: '@Url.Action("TherapySchedule", "Fisioterapia")',
             BILLING: '@Url.Action("Facturacion", "Billing")',
             BILL_LABORATORY: '@Url.Action("FacturacionLaboratorio", "Billing")',
                     REGISTER_PAYMENT: '@Url.Action("RegistrarPago", "Appointment")'

@@ -11,7 +11,8 @@
         usuarioNombre = Context.Session.GetString("UsuarioNombre") ?? "",
         usuarioApellido = Context.Session.GetString("UsuarioApellido") ?? "",
         urlSubmit = Url.Action("SubmitTherapySessions", "Fisioterapia"),
-        urlGetHours = Url.Action("GetAvailableHours", "Appointment")
+        urlGetHours = Url.Action("GetAvailableHours", "Appointment"),
+        urlAppointment = Url.Action("AppointmentGetById", "Appointment")
     };
 }
 
@@ -44,6 +45,13 @@
      data-config='@Html.Raw(System.Text.Json.JsonSerializer.Serialize(sessionData))'
      style="display:none;"></div>
 
+<input type="hidden"
+       id="appointmentId"
+       value="@(ViewBag.AppointmentId ?? 0)" />
+
+<input type="hidden"
+       id="selectedPatientId"
+       value="@(ViewBag.PatientId ?? 0)" />
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-sm-flex align-items-center justify-content-between">
@@ -59,16 +67,50 @@
                 <i class="mdi mdi-account-circle-outline me-1"></i> Asignación de Paciente y Especialista
             </h5>
 
+            
+
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label">Paciente</label>
-                    <select class="form-select select2" id="patientId" required>
-                        <option value="">Seleccione paciente...</option>
+
+                    <label class="form-label">
+                        Paciente
+                    </label>
+
+                    @if (ViewBag.AppointmentId != null)
+                    {
+                        <div class="alert alert-info mb-2">
+                            <i class="mdi mdi-information-outline"></i>
+                            Plan generado desde una cita de valoración.
+                        </div>
+                    }
+
+                    <select class="form-select select2"
+                            id="patientId"
+                            required>
+
+                        <option value="">
+                            Seleccione paciente...
+                        </option>
+
                         @foreach (var p in ViewBag.Pacientes as List<PatientDTO>)
                         {
-                            <option value="@p.PatientId">@($"{p.PatientFirstname} {p.PatientFirstsurname}")</option>
+                            if (ViewBag.PatientId != null &&
+                                p.PatientId == (int)ViewBag.PatientId)
+                            {
+                                <option value="@p.PatientId" selected>
+                                    @($"{p.PatientFirstname} {p.PatientFirstsurname}")
+                                </option>
+                            }
+                            else
+                            {
+                                <option value="@p.PatientId">
+                                    @($"{p.PatientFirstname} {p.PatientFirstsurname}")
+                                </option>
+                            }
                         }
+
                     </select>
+
                 </div>
 
                 <div class="col-md-6">
@@ -205,17 +247,31 @@
     
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    
-    <script>
-        $(document).ready(function() {
-        $('.select2').select2({
-        placeholder: "Seleccione una opción",
-        allowClear: true,
-        width: '100%',
-        // Esta opción es útil si usas el select dentro de un modal de Bootstrap
-        dropdownParent: $('#therapyScheduleForm')
-        });
+     <script>
+        $(document).ready(function () {
+
+            $('.select2').select2({
+                placeholder: "Seleccione una opción",
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $('#therapyScheduleForm')
+            });
+
+            const appointmentId =
+                parseInt($("#appointmentId").val() || "0");
+
+            if (appointmentId > 0) {
+
+                $("#patientId")
+                    .prop("disabled", true)
+                    .trigger("change");
+
+            }
+
         });
     </script>
+
+ 
+
     <script src="~/assets/js/fisioterapia-agenda.js"></script>
 }

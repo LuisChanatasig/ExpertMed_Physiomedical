@@ -17,7 +17,8 @@ const AppConfig = {
         NEW_CONSULTATION: '/Consultation/NewConsultation',
         CONSULTATION_FOLLOWUP: '/Consultation/ConsultationFollowUp',
         CONSULTATION_LIST: '/Consultation/ConsultationList',
-        BILLING: '/Billing/Facturacion'
+        BILLING: '/Billing/Facturacion',
+        START_THERAPY_PLAN: '/Fisioterapia/TherapySchedule'
     },
 
     // Configuración DataTable

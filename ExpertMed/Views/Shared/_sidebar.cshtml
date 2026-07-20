@@ -1,5 +1,4 @@
 ﻿@using Microsoft.AspNetCore.Http
-@using System.Text.Json
 @{
     // -------------------------------------------------------------------------
     // 1. RECUPERACIÓN DE SESIÓN Y DATOS DE USUARIO
@@ -330,91 +329,5 @@
 </div>
 <div class="vertical-overlay"></div>
 
-@{
-    // 1. Preparación de Datos para JS
-    var nombreSaludo = $"{(usuarioNombre ?? "").Trim()} {(usuarioApellido ?? "").Trim()}".Trim();
 
-    // Perfil Texto
-    string perfilTexto = perfilId switch
-    {
-        1 => "Administrador",
-        2 => "Doctor",
-        3 => "Recepción",
-        4 => "Gestión",
-        5 => "Imágenes",
-        6 => "Laboratorio",
-        7 => "Fisioterapia",
-        8 => "Facturación",
-        _ => "Usuario"
-    };
 
-    // 2. Rutas Rápidas (Comandos /ir)
-    // Se agregan todas las posibles, el usuario solo podrá acceder a las que su sesión permita,
-    // pero el bot conoce las rutas.
-    var routes = new Dictionary<string, string>
-    {
-        ["inicio"] = Url.Action("Index", "Home"),
-        ["pacientes"] = Url.Action("PatientList", "Patient"),
-        ["agenda"] = Url.Action("AppointmentList", "Appointment"),
-        ["consultas"] = Url.Action("ConsultationList", "Consultation"),
-        ["laboratorio"] = Url.Action("LaboratoryList", "Laboratorio"),
-        ["imagenes"] = Url.Action("ImagesList", "Images"),
-        ["fisioterapia"] = Url.Action("TherapySchedule", "Fisioterapia"),
-        ["facturacion"] = Url.Action("FacturasEmitidas", "Billing"),
-        ["reportes"] = Url.Action("ResumenConsultas", "ReportesConsultas"),
-        ["usuarios"] = Url.Action("UserList", "Users"),
-        ["consultorios"] = Url.Action("ListaConsultorios", "MedicalOffice"),
-        ["establecimientos"] = Url.Action("ListEstablishment", "Establisment")
-    };
-
-    // 3. Pasos del Tour de Menú
-    // Solo definimos selectores genéricos. Si el usuario no tiene permiso para ver ese ID en el HTML, el tour saltará ese paso.
-    var stepsMenu = new List<object>
-    {
-        new { selector = "#navbar-nav > li .nav-link.menu-link[href='#sidebarPacientes']", html = "Gestión de Pacientes", position = "right" },
-        new { selector = "#navbar-nav > li .nav-link.menu-link[href='#sidebarAppointment']", html = "Agenda de Citas", position = "right" },
-        new { selector = "#navbar-nav > li .nav-link.menu-link[href='#sidebarConsultas']", html = "Historial Médico", position = "right" },
-        new { selector = "#navbar-nav > li .nav-link.menu-link[href='#sidebarReportes']", html = "Dashboard y Métricas", position = "right" }
-    };
-
-    // 4. Lista dinámica de secciones activas para Ayuda
-    var seccionesActivas = new List<string>();
-    if (showAdminSection) seccionesActivas.Add("Administración (Usuarios, Consultorios)");
-    if (showPacientes) seccionesActivas.Add("Pacientes");
-    if (showAgenda) seccionesActivas.Add("Agenda");
-    if (showLab) seccionesActivas.Add("Laboratorio");
-    if (showImagenes) seccionesActivas.Add("Imágenes");
-    if (showFisio) seccionesActivas.Add("Fisioterapia");
-    if (showFacturacion) seccionesActivas.Add("Facturación");
-    if (showReportesGeneral) seccionesActivas.Add("Reportes y Analítica");
-
-    var menuHelpHtml = $"<strong>Tu perfil ({perfilTexto}) tiene acceso a:</strong><br>• {string.Join("<br>• ", seccionesActivas)}";
-}
-
-<script>
-    (function () {
-        // Datos seguros desde C#
-        var botRoutes = @Html.Raw(JsonSerializer.Serialize(routes));
-        var botSteps = @Html.Raw(JsonSerializer.Serialize(stepsMenu));
-        var botHelp = @Html.Raw(JsonSerializer.Serialize(menuHelpHtml));
-        var userName = @Html.Raw(JsonSerializer.Serialize(nombreSaludo));
-        var profileName = @Html.Raw(JsonSerializer.Serialize(perfilTexto));
-
-        // Inyección global
-        window.EBG_ROUTES = Object.assign({}, window.EBG_ROUTES || {}, botRoutes);
-
-        window.EBG_OPTIONS = Object.assign({}, window.EBG_OPTIONS || {}, {
-            userName: userName,
-            profileText: profileName,
-            greetMessage: "¡Hola, {name}! Bienvenido a ExpertMed.",
-            extraTours: { menu: botSteps },
-            menuHelp: botHelp
-        });
-
-        // Inicialización segura si el script principal ya cargó
-        if (window.ExpertBotGuide && typeof window.ExpertBotGuide.init === "function" && !window.__EB_MENU_INIT__) {
-            window.__EB_MENU_INIT__ = true;
-            window.ExpertBotGuide.init(Object.assign({ storagePrefix: "exp.menu", routes: window.EBG_ROUTES }, window.EBG_OPTIONS));
-        }
-    })();
-</script>

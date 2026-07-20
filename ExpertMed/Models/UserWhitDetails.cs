@@ -1,98 +1,103 @@
-﻿namespace ExpertMed.Models
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace ExpertMed.Models
 {
     public class UserWithDetails
     {
-        public int ProfileId { get; set; }
+        // --- Datos de Identidad ---
         public int UserId { get; set; }
+        public int ProfileId { get; set; }
+        public string ProfileName { get; set; }
         public string DocumentNumber { get; set; }
         public string Names { get; set; }
         public string Surnames { get; set; }
-        public string Phone { get; set; }
-        public string Email { get; set; }
-        public DateTime CreationDate { get; set; }
-        public DateTime? ModificationDate { get; set; }
-        public string Address { get; set; }
-        public byte[] ProfilePhoto { get; set; }
-        public string ProfilePhoto64 { get; set; }
-        public string SenecytCode { get; set; }
-        public string XKeyTaxo { get; set; }
-        public string XPassTaxo { get; set; }
-        public int SequentialBilling { get; set; }
+        public string FullName => $"{Names} {Surnames}";
         public string Login { get; set; }
         public string Password { get; set; }
         public int Status { get; set; }
-        public int? profileSelect { get; set; }
+
+        // --- Datos de Contacto y Ubicación ---
+        public string Email { get; set; }
+        public string? Phone { get; set; }
+        public string? Address { get; set; }
+        public int? UserCountryid { get; set; }
+        public string CountryName { get; set; }
+
+        // --- Datos Profesionales ---
+        public int? UserSpecialtyid { get; set; }
+        public string SpecialtyName { get; set; }
+        public string? SenecytCode { get; set; }
+        public string? UserDescription { get; set; }
+        public string? XKeyTaxo { get; set; }
+        public string? XPassTaxo { get; set; } // Nota: Manejar con precaución (ISO 27001)
+
+        // --- Configuración de Facturación / Establecimiento ---
         public int? UserEstablishmentid { get; set; }
         public int? UserVatpercentageid { get; set; }
-        public int? UserSpecialtyid { get; set; }
-        public int? UserCountryid { get; set; }
-        public string? UserDescription { get; set; }
+        public int SequentialBilling { get; set; }
+        public string? EstablishmentName { get; set; }
+        public string? EstablishmentAddress { get; set; }
+        public string? EstablishmentPointofsale { get; set; }
+        public string? EstablishmentEmissionPoint { get; set; }
 
-        public string ProfileName { get; set; }
-        public string EstablishmentName { get; set; }
-        public string EstablishmentAddress { get; set; }
-        public string EstablishmentPointofsale { get; set; }
-        public string EstablishmentEmissionPoint { get; set; }
-        public string SpecialtyName { get; set; }
-        public string CountryName { get; set; }
+        // --- Horarios de Atención ---
         public TimeSpan StartTime { get; set; }
         public TimeSpan EndTime { get; set; }
         public int AppointmentInterval { get; set; }
 
-        // 🔗 Asociaciones
-        public List<DoctorDto> Doctors { get; set; } = new();
-        public List<MedicalOfficeDto> MedicalOffices { get; set; } = new();
-        public List<UserFileDto> UserFiles { get; set; } = new();
+        // --- Auditoría ---
+        public DateTime CreationDate { get; set; }
+        public DateTime? ModificationDate { get; set; }
 
+        // --- Foto de Perfil ---
+        public byte[]? ProfilePhoto { get; set; }
+        public string ProfilePhoto64 { get; set; }
+
+        // --- Listas Relacionadas (Inicializadas para evitar NullReferenceException) ---
         public List<UserScheduleDayDto> ScheduleDays { get; set; } = new();
+        public List<UserFileDto> UserFiles { get; set; } = new();
+        public List<MedicalOfficeDto> MedicalOffices { get; set; } = new();
+        public List<DoctorDto> Doctors { get; set; } = new();
 
-        public byte[]? CompanyLogoBytes { get; set; }
-        public string? CompanyLogoFileName { get; set; }
-        public string? CompanyLogoContentType { get; set; }
+        // --- Helpers para UI: Conversión automática de archivos a Base64 ---
 
-        public byte[]? CertificateP12Bytes { get; set; }
-        public string? CertificateP12FileName { get; set; }
-        public string? CertificateP12ContentType { get; set; }
+        public string? CompanyLogoBase64 => GetFileBase64("logotipo", "image/png");
 
-        public byte[]? CompanySignatureBytes { get; set; }
-        public string? CompanySignatureFileName { get; set; }
-        public string? CompanySignatureContentType { get; set; }
+        public string? CompanySignatureBase64 => GetFileBase64("firma", "image/png");
 
-        public byte[]? CompanyStampBytes { get; set; }
-        public string? CompanyStampFileName { get; set; }
-        public string? CompanyStampContentType { get; set; }
+        public string? CompanyStampBase64 => GetFileBase64("sello", "image/png");
 
-        public string? CompanyLogoBase64 =>
-    UserFiles?.FirstOrDefault(f => f.FileType == "logotipo")?.FileContent is byte[] logo
-        ? $"data:image/png;base64,{Convert.ToBase64String(logo)}"
-        : null;
+        public string? CertificateP12Base64 => GetFileBase64("certificado_p12", "application/x-pkcs12");
 
-        public string? CompanySignatureBase64 =>
-            UserFiles?.FirstOrDefault(f => f.FileType == "firma")?.FileContent is byte[] sig
-                ? $"data:image/png;base64,{Convert.ToBase64String(sig)}"
-                : null;
+        /// <summary>
+        /// Método privado para buscar un archivo en la lista y convertirlo a string base64 para el frontend.
+        /// </summary>
+        private string? GetFileBase64(string type, string mimeType)
+        {
+            var file = UserFiles?.FirstOrDefault(f => f.FileType.Equals(type, StringComparison.OrdinalIgnoreCase));
+            if (file?.FileContent == null || file.FileContent.Length == 0) return null;
 
-        public string? CompanyStampBase64 =>
-            UserFiles?.FirstOrDefault(f => f.FileType == "sello")?.FileContent is byte[] stamp
-                ? $"data:image/png;base64,{Convert.ToBase64String(stamp)}"
-                : null;
-
-        public string? CertificateP12Base64 =>
-            UserFiles?.FirstOrDefault(f => f.FileType == "certificado_p12")?.FileContent is byte[] cert
-                ? $"data:application/x-pkcs12;base64,{Convert.ToBase64String(cert)}"
-                : null;
-
-
-
+            return $"data:{mimeType};base64,{Convert.ToBase64String(file.FileContent)}";
+        }
     }
 
-    public class DoctorDto
+    // --- DTOs Complementarios ---
+
+    public class UserScheduleDayDto
     {
-        public int DoctorId { get; set; }
-        public string DoctorNames { get; set; }
-        public string DoctorSurnames { get; set; }
-        public int DoctorSpecialtyId { get; set; }
-        public string DoctorSpecialtyName { get; set; }
+        public int ScheduleDayId { get; set; }
+        public int ScheduleId { get; set; }
+        public string WorkingDay { get; set; } // Ejemplo: "Lunes", "Martes"
+    }
+
+    public class UserFileDto
+    {
+        public string FileType { get; set; } // logotipo, firma, sello, certificado_p12
+        public string FileName { get; set; }
+        public byte[] FileContent { get; set; }
+        public string ContentType { get; set; }
     }
 
     public class MedicalOfficeDto
@@ -102,18 +107,13 @@
         public string OfficeLocation { get; set; }
     }
 
-    public class UserFileDto
+    public class DoctorDto
     {
-        public string FileType { get; set; }
-        public string FileName { get; set; }
-        public byte[] FileContent { get; set; }
-        public string ContentType { get; set; }
-    }
-
-    public class UserScheduleDayDto
-    {
-        public int ScheduleDayId { get; set; }
-        public int ScheduleId { get; set; }
-        public string WorkingDay { get; set; }
+        public int DoctorId { get; set; }
+        public string DoctorNames { get; set; }
+        public string DoctorSurnames { get; set; }
+        public string FullDoctorName => $"{DoctorNames} {DoctorSurnames}";
+        public int DoctorSpecialtyId { get; set; }
+        public string DoctorSpecialtyName { get; set; }
     }
 }

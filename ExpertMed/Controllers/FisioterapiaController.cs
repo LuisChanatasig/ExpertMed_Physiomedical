@@ -21,21 +21,69 @@ namespace ExpertMed.Controllers
             _therapyService = therapyService;
         }
 
+        //[HttpGet]
+        //public async Task<IActionResult> TherapySchedule()
+        //{
+        //    try
+        //    {
+        //        int perfilId = Convert.ToInt32(HttpContext.Session.GetInt32("PerfilId"));
+        //        int usuarioId = Convert.ToInt32(HttpContext.Session.GetInt32("UsuarioId"));
+
+        //        var pacientes = await _patientService.GetAllPatientsAsync(perfilId, usuarioId);
+
+        //        // Aquí usamos tu método nuevo que ejecuta sp_ListAllUser
+        //        var todosLosUsuarios = _usersService.GetAllUsers(usuarioId, perfilId);
+
+        //        var terapeutas = todosLosUsuarios
+        //            .Where(u => u.ProfileId == 7) // Solo los fisioterapeutas
+        //            .Select(u => new SelectDTO
+        //            {
+        //                Value = u.UserId.ToString(),
+        //                Text = $"{u.Names} {u.Surnames}"
+        //            })
+        //            .ToList();
+
+        //        ViewBag.Pacientes = pacientes;
+        //        ViewBag.Terapeutas = terapeutas;
+
+        //        return View();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error cargando la agenda de terapias.");
+        //        TempData["ErrorMessage"] = "No se pudo cargar la agenda de terapias.";
+        //        return RedirectToAction("TherapySchedule", "Fisioterapia");
+        //    }
+        //}
+
+
+
         [HttpGet]
-        public async Task<IActionResult> TherapySchedule()
+        public async Task<IActionResult> TherapySchedule(
+      int? appointmentId,
+      int? patientId)
         {
             try
             {
-                int perfilId = Convert.ToInt32(HttpContext.Session.GetInt32("PerfilId"));
-                int usuarioId = Convert.ToInt32(HttpContext.Session.GetInt32("UsuarioId"));
+                int perfilId =
+                    Convert.ToInt32(HttpContext.Session.GetInt32("PerfilId"));
 
-                var pacientes = await _patientService.GetAllPatientsAsync(perfilId, usuarioId);
+                int usuarioId =
+                    Convert.ToInt32(HttpContext.Session.GetInt32("UsuarioId"));
 
-                // Aquí usamos tu método nuevo que ejecuta sp_ListAllUser
-                var todosLosUsuarios = _usersService.GetAllUsers(usuarioId, perfilId);
+                var pacientes =
+                    await _patientService.GetAllPatientsAsync(
+                        perfilId,
+                        usuarioId);
 
-                var terapeutas = todosLosUsuarios
-                    .Where(u => u.ProfileId == 7) // Solo los fisioterapeutas
+                var todosLosUsuarios =
+                    _usersService.GetAllUsers(
+                        usuarioId,
+                        perfilId);
+
+                var terapeutas =
+                    todosLosUsuarios
+                    .Where(u => u.ProfileId == 7)
                     .Select(u => new SelectDTO
                     {
                         Value = u.UserId.ToString(),
@@ -46,16 +94,26 @@ namespace ExpertMed.Controllers
                 ViewBag.Pacientes = pacientes;
                 ViewBag.Terapeutas = terapeutas;
 
+                // NUEVO
+                ViewBag.AppointmentId = appointmentId;
+                ViewBag.PatientId = patientId;
+
                 return View();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error cargando la agenda de terapias.");
-                TempData["ErrorMessage"] = "No se pudo cargar la agenda de terapias.";
-                return RedirectToAction("TherapySchedule", "Fisioterapia");
+                _logger.LogError(
+                    ex,
+                    "Error cargando la agenda de terapias.");
+
+                TempData["ErrorMessage"] =
+                    "No se pudo cargar la agenda de terapias.";
+
+                return RedirectToAction(
+                    "TherapySchedule",
+                    "Fisioterapia");
             }
         }
-
         /// <summary>
         /// 
         /// </summary>

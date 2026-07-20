@@ -10,83 +10,36 @@
     var successMessage = TempData["SuccessMessage"] as string;
     var errorMessage = TempData["ErrorMessage"] as string;
 
-    string mensajeBot = perfilId switch
-    {
-        1 => "Hola administrador, ¿qué área quieres revisar hoy?",
-        3 => "¡Listo para ayudarte a gestionar pacientes y citas!",
-        4 => "Administra tu clínica con eficiencia. ¿Comenzamos?",
-        5 => "¿Listo para registrar nuevos resultados de laboratorio?",
-        6 => "Puedes consultar o subir estudios de imagen ahora mismo.",
-        2 => "Bienvenido doctor, tienes acceso a tus pacientes y consultas.",
-        _ => "Pronto me tendrás como tu asistente inteligente!"
-    };
+
 
     var acciones = new List<(string Texto, string Icono, string Ctrl, string Accion, string Clase)>();
     void Add(string t, string ic, string c, string a, string clase) => acciones.Add((t, ic, c, a, clase));
 
     switch (perfilId)
     {
-        case 3:
-            Add("VER TODAS MIS CITAS", "ri-file-search-line", "Appointment", "AppointmentList", "btn-primary");
-            Add("REGISTRAR PACIENTE", "ri-user-add-line", "Patient", "Create", "btn-secondary");
+        case 4: // Administrativo
+            Add("CITAS", "ri-calendar-line", "Appointment", "AppointmentList", "btn-primary");
+            Add("PLANIFICACIÓN DE FISIOTERAPIA", "mdi mdi-calendar-clock", "Fisioterapia", "TherapySchedule", "btn-secondary");
+            Add("HISTORIAL DE TERAPIAS", "mdi mdi-history", "Fisioterapia", "TherapyHistory", "btn-outline-success");
             break;
-        case 5:
-            Add("SOLICITUDES DE LABORATORIO", "mdi mdi-flask-outline", "Laboratorio", "LaboratoryList", "btn-primary");
-            Add("REGISTRAR RESULTADOS", "mdi mdi-pencil-box-outline", "Laboratorio", "RegistrarResultado", "btn-secondary");
+
+        case 7: // Fisioterapeuta
+            Add("PLANIFICACIÓN DE FISIOTERAPIA", "mdi mdi-calendar-clock", "Fisioterapia", "TherapySchedule", "btn-primary");
+            Add("HISTORIAL DE TERAPIAS", "mdi mdi-history", "Fisioterapia", "TherapyHistory", "btn-secondary");
             break;
-        case 6:
-            Add("SOLICITUDES DE IMÁGENES", "mdi mdi-image-multiple-outline", "Imagenes", "ListaImagenes", "btn-primary");
-            Add("REGISTRAR RESULTADOS", "mdi mdi-pencil-box-outline", "Imagenes", "RegistrarResultadoImagen", "btn-secondary");
-            break;
-        case 1:
-        case 4:
-            Add("CITAS", "ri-file-search-line", "Appointment", "AppointmentList", "btn-primary");
-            Add("CONSULTAS MÉDICAS", "ri-newspaper-line", "Consultation", "NewConsultation", "btn-secondary");
-            Add("VER REPORTES", "mdi mdi-chart-bar", "ReportesConsultas", "ResumenConsultas", "btn-outline-success");
-            break;
+
         default:
-            Add("CITAS", "ri-file-search-line", "Appointment", "AppointmentList", "btn-primary");
-            Add("CONSULTAS", "ri-newspaper-line", "Consultation", "ConsultationList", "btn-secondary");
+            Add("PLANIFICACIÓN DE FISIOTERAPIA", "mdi mdi-calendar-clock", "Fisioterapia", "TherapySchedule", "btn-primary");
             break;
     }
+ 
 
-    // Pasos del tour de esta pantalla
-    var steps = new[]
-    {
-        new { selector = "#heroContent",    html = "<div class='mb-2 fw-bold'>📋 Panel principal</div><div>Información y accesos rápidos, pensado para móviles.</div>", position = "bottom" },
-        new { selector = "#accionesWrap",   html = "<div class='mb-2 fw-bold'>🎯 Acciones por perfil</div><div>Los accesos se adaptan a tu rol actual.</div>", position = "bottom" },
-        new { selector = "#expertbotGuide", html = "<div class='mb-2 fw-bold'>🤖 ExpertBot</div><div>Haz clic para chatear, usar <code>/tour</code> o pedir ayuda contextual.</div>", position = "left" }
-    };
 
-    var funciones = acciones.Select(a => a.Texto).ToList();
 
-    string perfilTexto = perfilId switch
-    {
-        1 => "Administrador: control total sobre el sistema, usuarios, consultorios, citas, consultas y reportes.",
-        2 => "Doctor: accede a tus pacientes y consultas.",
-        3 => "Recepción: gestiona citas y registra pacientes.",
-        4 => "Gestión: citas, consultas y reportes de la clínica.",
-        5 => "Lab: solicitudes y registro de resultados.",
-        6 => "Imágenes: estudios e informes radiológicos.",
-        _ => "Perfil no identificado."
-    };
-
-    // Serializa para JS (todo crudo con Html.Raw)
-    var stepsJs = JsonSerializer.Serialize(steps);
-    var funcionesJs = JsonSerializer.Serialize(funciones);
-    var mensajeBotJs = JsonSerializer.Serialize(mensajeBot);
-    var perfilTextoJs = JsonSerializer.Serialize(perfilTexto);
 }
 
 @section styles {
-    <!-- Define valores que el Layout leerá ANTES de inicializar el bot -->
-    <script>
-        window.EBG_STEPS = @Html.Raw(stepsJs);
-        window.EBG_FUNCS = @Html.Raw(funcionesJs);
-
-        // Overrides opcionales por pantalla:
-        window.EBG_OPTIONS = { greetMessage: @Html.Raw(mensajeBotJs) };
-    </script>
+ 
 
     <style>
         #accionesWrap a.btn {
@@ -126,8 +79,6 @@
 </div>
 
 @section scripts {
-    @* No re-inicialices el bot aquí. El Layout ya lo hace. *@
-
     @if (!string.IsNullOrEmpty(successMessage))
     {
         var successJs = JsonSerializer.Serialize(successMessage);

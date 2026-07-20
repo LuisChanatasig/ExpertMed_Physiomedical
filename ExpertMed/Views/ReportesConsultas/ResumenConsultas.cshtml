@@ -1,391 +1,502 @@
-﻿@model ResumenConsultasDto
+﻿@model ExpertMed.Models.ResumenTerapiasDto
 @using System.Text.Json
 @using Microsoft.AspNetCore.Http
 @using System.Linq
 
 @{
-    ViewData["Title"] = "Dashboard Gerencial";
+    ViewData["Title"] = "Dashboard de Terapias";
     Layout = "~/Views/Shared/_Layout.cshtml";
 
-    // Inicialización defensiva para evitar NullReferenceException
-    var kpi = Model?.Kpi ?? new ResumenConsultasDto.DashboardKpi();
-    var evolucion = Model?.EvolucionDiaria ?? new List<ResumenConsultasDto.DashboardEvolutionItem>();
-    var estados = Model?.EstadoCitas ?? new List<ResumenConsultasDto.DashboardStatusItem>();
-    var ranking = Model?.RankingMedicos ?? new List<ResumenConsultasDto.DashboardDoctorItem>();
-    var seguros = Model?.PacientesPorSeguro ?? new List<ResumenConsultasDto.DashboardInsuranceItem>();
+    var kpi = Model?.Kpi ?? new ResumenTerapiasDto.DashboardKpi();
+    var evolucion = Model?.EvolucionDiaria ?? new List<ResumenTerapiasDto.DashboardEvolutionItem>();
+    var estados = Model?.EstadoTerapias ?? new List<ResumenTerapiasDto.DashboardStatusItem>();
+    var ranking = Model?.RankingTiposTerapia ?? new List<ResumenTerapiasDto.DashboardTipoTerapiaItem>();
+    var terapiasPorTipo = Model?.TerapiasPorTipo ?? new List<ResumenTerapiasDto.DashboardTerapiaTipoItem>();
 
     var qDesde = Context.Request.Query["fechaDesde"].ToString();
     var qHasta = Context.Request.Query["fechaHasta"].ToString();
 
-    // Función local para serializar a JSON seguro para JS
-    string SafeJson<T>(T obj) => JsonSerializer.Serialize(obj, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+    var pacientes = ViewBag.Pacientes as List<PatientDTO> ?? new List<PatientDTO>();
+    var medicos = ViewBag.Medicos as List<MedicDetails> ?? new List<MedicDetails>();
+
+    double tasaPagadas = kpi.TotalSesiones > 0
+        ? Math.Round((double)kpi.TotalPagadas * 100 / kpi.TotalSesiones, 1)
+        : 0;
+
+    double tasaPacientes = kpi.TotalSesiones > 0
+        ? Math.Round((double)kpi.TotalPacientesHistorico * 100 / kpi.TotalSesiones, 1)
+        : 0;
+
+    string SafeJson<T>(T obj) => JsonSerializer.Serialize(
+        obj,
+        new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        }
+    );
 }
 
-<div class="container-fluid mt-3">
-    <div class="toolbar-sticky d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 pb-2 mb-3 border-bottom">
-        <div>
-            <h2 class="h4 mb-0"><i class="mdi mdi-monitor-dashboard me-1"></i> Dashboard Operativo</h2>
-            <small class="text-muted">
-                @if (!string.IsNullOrEmpty(qDesde) || !string.IsNullOrEmpty(qHasta))
-                {
-                    <span>Filtro activo: <strong>@qDesde</strong> al <strong>@qHasta</strong></span>
-                }
-                else
-                {
-                    <span>Mostrando mes actual</span>
-                }
-            </small>
+@section styles {
+    <link rel="stylesheet" href="~/assets/css/dashboard-consultas.css" asp-append-version="true" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+}
+
+<div class="dashboard-wrapper">
+
+    <div class="dash-header">
+        <div class="dash-header__left">
+            <div class="dash-header__icon">
+                <i class="mdi mdi-human-cane"></i>
+            </div>
+            <div>
+                <h3 class="dash-header__title">Control de Terapias</h3>
+                <p class="dash-header__sub">Análisis operativo de sesiones terapéuticas · Periodo seleccionado</p>
+            </div>
         </div>
 
-        <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-success" href="@Url.Action("ExportarResumenConsultasExcel", "Reportes", new { fechaDesde = qDesde, fechaHasta = qHasta })">
-                <i class="mdi mdi-file-excel"></i> Excel
-            </a>
-            <a href="@Url.Action("ResumenConsultas", "Reportes")" class="btn btn-light" title="Limpiar Filtros">
+        <div class="dash-header__actions">
+            <a class="btn-dash btn-dash--ghost"
+               href="@Url.Action("ResumenConsultas", "ReportesConsultas")"
+               title="Recargar datos">
                 <i class="mdi mdi-refresh"></i>
             </a>
-            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasFiltros">
-                <i class="mdi mdi-filter-variant"></i> Filtros
+
+            <button class="btn-dash btn-dash--outline"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#offcanvasFiltros">
+                <i class="mdi mdi-filter-variant"></i>
+                <span>Filtrar Periodo</span>
+            </button>
+
+            <button class="btn-dash btn-dash--conciliation"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalFiltrosConciliacion">
+                <i class="mdi mdi-file-table-outline"></i>
+                <span>Conciliación</span>
             </button>
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3">
-            <div class="card border-0 shadow-sm h-100 border-start border-4 border-primary">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-2">
-                        <div class="avatar-sm flex-shrink-0">
-                            <span class="avatar-title bg-primary-subtle text-primary rounded fs-3">
-                                <i class="mdi mdi-calendar-clock"></i>
-                            </span>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <p class="text-uppercase fw-medium text-muted mb-0">Total Citas</p>
-                        </div>
-                    </div>
-                    <h4 class="fs-22 fw-semibold mb-0">@kpi.TotalCitas</h4>
-                    <small class="text-muted">Agendadas en recepción</small>
+    <div class="kpi-grid">
+
+        <div class="kpi-card kpi-card--blue">
+            <div class="kpi-card__icon">
+                <i class="mdi mdi-calendar-clock"></i>
+            </div>
+            <div class="kpi-card__body">
+                <span class="kpi-card__label">Sesiones Registradas</span>
+                <span class="kpi-card__value">@kpi.TotalSesiones</span>
+                <span class="kpi-card__note">Volumen total de sesiones</span>
+            </div>
+            <div class="kpi-card__wave"></div>
+        </div>
+
+        <div class="kpi-card kpi-card--green">
+            <div class="kpi-card__icon">
+                <i class="mdi mdi-human-cane"></i>
+            </div>
+            <div class="kpi-card__body">
+                <span class="kpi-card__label">Terapias Realizadas</span>
+                <span class="kpi-card__value">@kpi.TotalTerapias</span>
+                <span class="kpi-card__note">Total acumulado de terapias</span>
+            </div>
+            <div class="kpi-card__wave"></div>
+        </div>
+
+        <div class="kpi-card kpi-card--teal">
+            <div class="kpi-card__icon">
+                <i class="mdi mdi-cash-check"></i>
+            </div>
+            <div class="kpi-card__body">
+                <span class="kpi-card__label">Pagadas</span>
+                <span class="kpi-card__value">@kpi.TotalPagadas</span>
+                <div class="kpi-progress">
+                    <div class="kpi-progress__bar" style="width:@tasaPagadas%"></div>
                 </div>
+                <span class="kpi-card__note">Tasa de pago: <b>@tasaPagadas%</b></span>
+            </div>
+            <div class="kpi-card__wave"></div>
+        </div>
+
+        <div class="kpi-card kpi-card--red">
+            <div class="kpi-card__icon">
+                <i class="mdi mdi-account-group"></i>
+            </div>
+            <div class="kpi-card__body">
+                <span class="kpi-card__label">Pacientes</span>
+                <span class="kpi-card__value">@kpi.TotalPacientesHistorico</span>
+                <span class="kpi-card__note">Pacientes únicos relacionados</span>
+            </div>
+            <div class="kpi-card__wave"></div>
+        </div>
+
+    </div>
+
+    <div class="charts-grid">
+        <div class="chart-panel chart-panel--wide">
+            <div class="chart-panel__header">
+                <span class="chart-panel__title">
+                    <i class="mdi mdi-chart-timeline-variant-shimmer text-primary"></i>
+                    Evolución Diaria de Terapias
+                </span>
+            </div>
+            <div class="chart-panel__body">
+                <div id="chartEvolution"></div>
             </div>
         </div>
 
-        <div class="col-6 col-lg-3">
-            <div class="card border-0 shadow-sm h-100 border-start border-4 border-success">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-2">
-                        <div class="avatar-sm flex-shrink-0">
-                            <span class="avatar-title bg-success-subtle text-success rounded fs-3">
-                                <i class="mdi mdi-stethoscope"></i>
-                            </span>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <p class="text-uppercase fw-medium text-muted mb-0">Atenciones</p>
-                        </div>
-                    </div>
-                    <h4 class="fs-22 fw-semibold mb-0">@kpi.TotalConsultas</h4>
-                    <small class="text-muted">Consultas médicas cerradas</small>
-                </div>
+        <div class="chart-panel">
+            <div class="chart-panel__header">
+                <span class="chart-panel__title">
+                    <i class="mdi mdi-chart-donut text-warning"></i>
+                    Estado / Avance de Terapias
+                </span>
             </div>
-        </div>
-
-        <div class="col-6 col-lg-3">
-            <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-2">
-                        <div class="avatar-sm flex-shrink-0">
-                            <span class="avatar-title bg-warning-subtle text-warning rounded fs-3">
-                                <i class="mdi mdi-cash-multiple"></i>
-                            </span>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <p class="text-uppercase fw-medium text-muted mb-0">Pagadas</p>
-                        </div>
-                    </div>
-                    <h4 class="fs-22 fw-semibold mb-0">@kpi.TotalPagadas</h4>
-                    <small class="text-muted">Citas facturadas (Status Pago)</small>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-6 col-lg-3">
-            <div class="card border-0 shadow-sm h-100 border-start border-4 border-info">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-2">
-                        <div class="avatar-sm flex-shrink-0">
-                            <span class="avatar-title bg-info-subtle text-info rounded fs-3">
-                                <i class="mdi mdi-account-group"></i>
-                            </span>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <p class="text-uppercase fw-medium text-muted mb-0">Cartera</p>
-                        </div>
-                    </div>
-                    <h4 class="fs-22 fw-semibold mb-0">@kpi.TotalPacientesHistorico</h4>
-                    <small class="text-muted">Pacientes únicos históricos</small>
-                </div>
+            <div class="chart-panel__body">
+                <div id="chartStatus"></div>
             </div>
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
-        <div class="col-lg-8">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-light">
-                    <h5 class="card-title mb-0">Evolución Diaria de Citas</h5>
-                </div>
-                <div class="card-body">
-                    <div id="chartEvolution" style="height: 350px;"></div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-light">
-                    <h5 class="card-title mb-0">Estado de Citas</h5>
-                </div>
-                <div class="card-body">
-                    <div id="chartStatus" style="height: 350px;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div class="bottom-grid">
 
-    <div class="row g-3">
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0 text-primary"><i class="mdi mdi-trophy-variant-outline"></i> Top 10 Productividad Médica</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0 align-middle">
-                            <thead class="table-light">
+        <div class="data-panel">
+            <div class="data-panel__header">
+                <span class="data-panel__title">
+                    <i class="mdi mdi-podium text-primary"></i>
+                    Top 10 · Tipos de Terapia
+                </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="rank-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>TIPO DE TERAPIA</th>
+                            <th class="text-center">SESIONES</th>
+                            <th>RENDIMIENTO</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (ranking.Any())
+                        {
+                            var maxVal = ranking.Max(x => x.CantidadSesiones);
+                            int pos = 1;
+
+                            foreach (var item in ranking)
+                            {
+                                var pct = maxVal > 0 ? (item.CantidadSesiones * 100) / maxVal : 0;
+                                var medalClass = pos == 1 ? "medal--gold" : pos == 2 ? "medal--silver" : pos == 3 ? "medal--bronze" : "";
+                                var inicial = !string.IsNullOrWhiteSpace(item.TipoTerapia)
+                                    ? item.TipoTerapia.Substring(0, 1).ToUpper()
+                                    : "T";
+
                                 <tr>
-                                    <th class="ps-3">Médico</th>
-                                    <th class="text-center">Consultas</th>
-                                    <th class="text-end pe-3">Progreso</th>
+                                    <td><span class="medal @medalClass">@pos</span></td>
+                                    <td>
+                                        <div class="doc-cell">
+                                            <div class="doc-avatar">@inicial</div>
+                                            <span>@item.TipoTerapia</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-center fw-bold">@item.CantidadSesiones</td>
+                                    <td>
+                                        <div class="rank-bar-wrap">
+                                            <div class="rank-bar">
+                                                <div class="rank-bar__fill" style="width:@pct%"></div>
+                                            </div>
+                                            <small>@pct%</small>
+                                        </div>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @if (ranking.Any())
-                                {
-                                    var maxVal = ranking.Max(x => x.ConsultasRealizadas);
-                                    foreach (var item in ranking)
-                                    {
-                                        var percent = maxVal > 0 ? (item.ConsultasRealizadas * 100) / maxVal : 0;
-                                        <tr>
-                                            <td class="ps-3 fw-medium">@item.Medico</td>
-                                            <td class="text-center fw-bold">@item.ConsultasRealizadas</td>
-                                            <td class="text-end pe-3" style="width: 30%;">
-                                                <div class="progress" style="height: 6px;">
-                                                    <div class="progress-bar bg-primary" role="progressbar" style="width: @percent%"></div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    }
-                                }
-                                else
-                                {
-                                    <tr><td colspan="3" class="text-center py-3 text-muted">Sin datos disponibles</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+
+                                pos++;
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">Sin datos disponibles</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0 text-info"><i class="mdi mdi-shield-account-outline"></i> Pacientes por Aseguradora</h5>
+        <div class="side-panels">
+
+            <div class="paid-banner">
+                <div>
+                    <p class="paid-banner__label">Total Pagado / Facturado</p>
+                    <h3 class="paid-banner__value">@kpi.TotalPagadas <span>Sesiones</span></h3>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ps-3">Aseguradora</th>
-                                    <th class="text-end pe-3">Pacientes Únicos</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (seguros.Any())
-                                {
-                                    foreach (var item in seguros)
-                                    {
-                                        <tr>
-                                            <td class="ps-3">
-                                                @if (item.Seguro.Contains("PARTICULAR"))
-                                                {
-                                                    <span class="badge bg-light text-dark border">@item.Seguro</span>
-                                                }
-                                                else
-                                                {
-                                                    @item.Seguro
-                                                }
-                                            </td>
-                                            <td class="text-end pe-3">@item.CantidadPacientesUnicos</td>
-                                        </tr>
-                                    }
-                                }
-                                else
-                                {
-                                    <tr><td colspan="2" class="text-center py-3 text-muted">Sin datos disponibles</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <i class="mdi mdi-cash-check paid-banner__icon"></i>
             </div>
+
+            <div class="data-panel">
+                <div class="data-panel__header">
+                    <span class="data-panel__title">
+                        <i class="mdi mdi-format-list-bulleted-type text-success"></i>
+                        Terapias por Tipo
+                    </span>
+                </div>
+
+                <ul class="insurance-list">
+                    @if (terapiasPorTipo.Any())
+                    {
+                        foreach (var item in terapiasPorTipo.Take(6))
+                        {
+                            <li class="insurance-item">
+                                <div class="insurance-item__left">
+                                    <span class="insurance-dot"></span>
+                                    <span>@item.TipoTerapia</span>
+                                </div>
+                                <span class="insurance-badge">@item.CantidadSesiones</span>
+                            </li>
+                        }
+                    }
+                    else
+                    {
+                        <li class="insurance-item">
+                            <div class="insurance-item__left">
+                                <span class="insurance-dot"></span>
+                                <span>Sin datos disponibles</span>
+                            </div>
+                            <span class="insurance-badge">0</span>
+                        </li>
+                    }  
+                </ul>
+            </div>
+
         </div>
     </div>
 </div>
 
-<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasFiltros" aria-labelledby="offcanvasFiltrosLabel">
-    <div class="offcanvas-header bg-light">
-        <h5 id="offcanvasFiltrosLabel" class="offcanvas-title">Filtrar Dashboard</h5>
-        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+<div class="offcanvas offcanvas-end" id="offcanvasFiltros">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title fw-bold">
+            <i class="mdi mdi-tune-vertical me-1"></i> Parámetros del Dashboard
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
     </div>
+
     <div class="offcanvas-body">
-        <form method="get" asp-action="ResumenConsultas" asp-controller="Reportes" id="formFiltros">
-            <div class="mb-4">
-                <label class="form-label fw-bold">Rango de Fechas</label>
-                <div class="input-group mb-2">
-                    <span class="input-group-text"><i class="mdi mdi-calendar"></i></span>
-                    <input type="date" class="form-control" id="fechaDesde" name="fechaDesde" value="@qDesde" required />
-                </div>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="mdi mdi-calendar"></i></span>
-                    <input type="date" class="form-control" id="fechaHasta" name="fechaHasta" value="@qHasta" required />
-                </div>
+        <form method="get" asp-controller="ReportesConsultas" asp-action="ResumenConsultas">
+            <div class="mb-3">
+                <label class="form-label fw-medium">Fecha inicio</label>
+                <input type="date" class="form-control" name="fechaDesde" value="@qDesde" />
             </div>
 
             <div class="mb-4">
-                <label class="form-label small text-muted text-uppercase">Accesos Rápidos</label>
-                <div class="d-grid gap-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm text-start" data-range="today">
-                        <i class="mdi mdi-calendar-today me-2"></i> Hoy
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm text-start" data-range="week">
-                        <i class="mdi mdi-calendar-week me-2"></i> Esta semana
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm text-start" data-range="month">
-                        <i class="mdi mdi-calendar-month me-2"></i> Este mes
-                    </button>
-                </div>
+                <label class="form-label fw-medium">Fecha fin</label>
+                <input type="date" class="form-control" name="fechaHasta" value="@qHasta" />
             </div>
 
-            <div class="d-grid pt-3 border-top">
-                <button type="submit" class="btn btn-primary btn-lg shadow">
-                    <i class="mdi mdi-magnify me-1"></i> Aplicar Filtros
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="mdi mdi-magnify me-1"></i> Actualizar Reporte
                 </button>
+
+                <a href="@Url.Action("ResumenConsultas", "ReportesConsultas")" class="btn btn-outline-secondary">
+                    <i class="mdi mdi-close me-1"></i> Limpiar Filtros
+                </a>
             </div>
         </form>
     </div>
 </div>
 
+<div class="modal fade" id="modalFiltrosConciliacion" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+
+            <div class="modal-header" style="background:linear-gradient(135deg,#1a7a50,#22a06b)">
+                <div>
+                    <h5 class="modal-title fw-bold mb-0 text-white">
+                        <i class="mdi mdi-file-excel-outline me-1"></i>
+                        Descargar Conciliación de Terapias
+                    </h5>
+                    <small class="text-white opacity-75">
+                        Configure los filtros antes de generar el Excel.
+                    </small>
+                </div>
+
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <form method="get"
+                  asp-controller="ReportesConsultas"
+                  asp-action="DescargarReporteConciliacionExcel">
+
+                <div class="modal-body">
+
+                    <div class="alert alert-info d-flex gap-2 mb-4">
+                        <i class="mdi mdi-information-outline fs-4 flex-shrink-0"></i>
+                        <div>
+                            <strong>Reporte de conciliación de terapias</strong>
+                            <div class="small">
+                                Incluye sesiones, paciente, terapeuta, cita relacionada, factura,
+                                método de pago, valor cobrado y alertas de conciliación.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Fecha inicio</label>
+                            <input type="date" class="form-control" name="fechaInicio" value="@qDesde" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Fecha fin</label>
+                            <input type="date" class="form-control" name="fechaFin" value="@qHasta" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Terapeuta</label>
+                            <select class="form-select select2-medico" name="medicoId" id="selectMedico">
+                                <option value="">Todos los terapeutas</option>
+                                @foreach (var m in medicos)
+                                {
+                                    <option value="@m.UsersId">
+                                        @m.UsersNames @m.UsersSurcenames — @m.SpecialityName
+                                    </option>
+                                }
+                            </select>
+                            <div class="form-text">Opcional — vacío = todos</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Paciente</label>
+                            <select class="form-select select2-paciente" name="pacienteId" id="selectPaciente">
+                                <option value="">Todos los pacientes</option>
+                                @foreach (var p in pacientes)
+                                {
+                                    <option value="@p.PatientId">
+                                        @p.PatientFirstsurname @p.PatientSecondlastname @p.PatientFirstname @p.PatientMiddlename
+                                        @if (!string.IsNullOrWhiteSpace(p.PatientDocumentNumber))
+                                        {
+                                            <text> · @p.PatientDocumentNumber</text>
+                                        }
+                                    </option>
+                                }
+                            </select>
+                            <div class="form-text">Opcional — vacío = todos</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Tipo de terapia</label>
+                            <input type="text"
+                                   class="form-control"
+                                   name="tipoTerapia"
+                                   placeholder="Ej: Fisioterapia traumatológica" />
+                            <div class="form-text">Opcional — vacío = todas</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Facturación</label>
+                            <select class="form-select" name="soloFacturados">
+                                <option value="">Todos</option>
+                                <option value="true">Solo facturados / pagados</option>
+                                <option value="false">Solo no facturados</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Estado conciliación</label>
+                            <select class="form-select" name="estadoConciliacion">
+                                <option value="">Todos</option>
+                                <option value="CONCILIADO">Conciliado</option>
+                                <option value="PENDIENTE">Pendiente</option>
+                                <option value="REVISAR">Revisar</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch mt-1">
+                                <input class="form-check-input"
+                                       type="checkbox"
+                                       role="switch"
+                                       id="soloConAlertas"
+                                       name="soloConAlertas"
+                                       value="true" />
+                                <label class="form-check-label fw-medium" for="soloConAlertas">
+                                    Solo registros con alertas o pendientes
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancelar
+                    </button>
+
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-download me-1"></i> Descargar Excel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script id="dash-data" type="application/json">
+{
+    "evolucion": @Html.Raw(SafeJson(evolucion)),
+    "estados": @Html.Raw(SafeJson(estados))
+}
+</script>
+
 @section scripts {
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="~/js/reportes/resumen-terapias.js" asp-append-version="true"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/jquery.select2.min.js"></script>
 
     <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            // 1. Obtener datos serializados desde C#
-            const dataEvolution = @Html.Raw(SafeJson(evolucion));
-            const dataStatus = @Html.Raw(SafeJson(estados));
+        const modalConciliacion = document.getElementById('modalFiltrosConciliacion');
 
-            // 2. Configurar Gráfico de Evolución (Línea)
-            const chartEv = echarts.init(document.getElementById('chartEvolution'));
-            const optionEv = {
-                tooltip: { trigger: 'axis' },
-                grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-                xAxis: {
-                    type: 'category',
-                    boundaryGap: false,
-                    // Mapeamos solo la parte de fecha "YYYY-MM-DD"
-                    data: dataEvolution.map(i => i.fecha.substring(0, 10)),
-                    axisLine: { lineStyle: { color: '#ccc' } }
-                },
-                yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
-                series: [{
-                    name: 'Citas',
-                    type: 'line',
-                    smooth: true,
-                    data: dataEvolution.map(i => i.cantidadCitas),
-                    itemStyle: { color: '#405189' }, // Color primario Velzon
-                    areaStyle: {
-                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                            { offset: 0, color: 'rgba(64, 81, 137, 0.5)' },
-                            { offset: 1, color: 'rgba(64, 81, 137, 0.01)' }
-                        ])
+        if (modalConciliacion) {
+            modalConciliacion.addEventListener('shown.bs.modal', function () {
+                $('#selectMedico').select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Buscar terapeuta...',
+                    allowClear: true,
+                    dropdownParent: $('#modalFiltrosConciliacion'),
+                    language: {
+                        noResults: () => 'No se encontraron terapeutas',
+                        searching: () => 'Buscando...'
                     }
-                }]
-            };
-            chartEv.setOption(optionEv);
+                });
 
-            // 3. Configurar Gráfico de Estados (Donut)
-            const chartSt = echarts.init(document.getElementById('chartStatus'));
-            const optionSt = {
-                tooltip: { trigger: 'item' },
-                legend: { bottom: '0%', left: 'center' },
-                series: [{
-                    name: 'Estado',
-                    type: 'pie',
-                    radius: ['40%', '70%'],
-                    avoidLabelOverlap: false,
-                    itemStyle: { borderRadius: 5, borderColor: '#fff', borderWidth: 2 },
-                    label: { show: false, position: 'center' },
-                    emphasis: {
-                        label: { show: true, fontSize: 16, fontWeight: 'bold' }
-                    },
-                    data: dataStatus.map(i => {
-                        // Asignar colores según estado (Lógica de presentación)
-                        let color = '#ccc';
-                        const st = i.estado.toLowerCase();
-                        if(st.includes('finalizada')) color = '#0ab39c'; // Success
-                        else if(st.includes('cancelada')) color = '#f06548'; // Danger
-                        else if(st.includes('activa')) color = '#299cdb'; // Info
-                        else if(st.includes('emergencia')) color = '#f7b84b'; // Warning
-
-                        return { value: i.cantidad, name: i.estado, itemStyle: { color: color } };
-                    })
-                }]
-            };
-            chartSt.setOption(optionSt);
-
-            // 4. Responsividad
-            window.addEventListener('resize', () => {
-                chartEv.resize();
-                chartSt.resize();
-            });
-
-            // 5. Lógica de Filtros (Fechas rápidas)
-            const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-            const fmt = (d) => d.toISOString().slice(0, 10);
-
-            document.querySelectorAll('[data-range]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const now = new Date();
-                    const type = btn.dataset.range;
-                    let dStart, dEnd;
-
-                    if (type === 'today') {
-                        dStart = now; dEnd = now;
-                    } else if (type === 'week') {
-                        const day = now.getDay() || 7;
-                        if (day !== 1) now.setHours(-24 * (day - 1));
-                        dStart = now;
-                        dEnd = addDays(now, 6);
-                    } else if (type === 'month') {
-                        dStart = new Date(now.getFullYear(), now.getMonth(), 1);
-                        dEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                $('#selectPaciente').select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Buscar paciente o cédula...',
+                    allowClear: true,
+                    dropdownParent: $('#modalFiltrosConciliacion'),
+                    language: {
+                        noResults: () => 'No se encontraron pacientes',
+                        searching: () => 'Buscando...'
                     }
-
-                    document.getElementById('fechaDesde').value = fmt(dStart);
-                    document.getElementById('fechaHasta').value = fmt(dEnd);
                 });
             });
-        });
+
+            modalConciliacion.addEventListener('hidden.bs.modal', function () {
+                if ($('#selectMedico').hasClass('select2-hidden-accessible')) {
+                    $('#selectMedico').select2('destroy');
+                }
+
+                if ($('#selectPaciente').hasClass('select2-hidden-accessible')) {
+                    $('#selectPaciente').select2('destroy');
+                }
+            });
+        }
     </script>
 }

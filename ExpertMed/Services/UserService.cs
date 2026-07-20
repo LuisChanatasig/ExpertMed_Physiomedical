@@ -310,11 +310,7 @@ namespace ExpertMed.Services
         // Método para obtener un usuario por su ID
         public async Task<UserWithDetails> GetUserDetailsAsync(int userId)
         {
-            UserWithDetails userDetails = null;
-            var doctors = new List<DoctorDto>();
-            var consultorios = new List<MedicalOfficeDto>();
-            var files = new List<UserFileDto>();
-            var workingDays = new List<UserScheduleDayDto>(); // 1. Nueva lista
+            UserWithDetails user = null;
 
             using var connection = new SqlConnection(_dbContext.Database.GetConnectionString());
             using var command = new SqlCommand("sp_ListUserById", connection)
@@ -328,59 +324,63 @@ namespace ExpertMed.Services
                 await connection.OpenAsync();
                 using var reader = await command.ExecuteReaderAsync();
 
-                // 🧾 Primer result set: datos del usuario
+                // --- RESULTADO 1: INFORMACIÓN BÁSICA DEL USUARIO ---
                 if (await reader.ReadAsync())
                 {
-                    userDetails = new UserWithDetails
+                    user = new UserWithDetails
                     {
                         UserId = reader.GetInt32(reader.GetOrdinal("users_id")),
-                        DocumentNumber = reader.GetString(reader.GetOrdinal("users_document_number")),
+                        DocumentNumber = reader.IsDBNull(reader.GetOrdinal("users_document_number")) ? "" : reader.GetString(reader.GetOrdinal("users_document_number")),
                         Names = reader.GetString(reader.GetOrdinal("users_names")),
                         Surnames = reader.GetString(reader.GetOrdinal("users_surcenames")),
-                        Phone = reader.GetString(reader.GetOrdinal("users_phone")),
+                        Phone = reader.IsDBNull(reader.GetOrdinal("users_phone")) ? null : reader.GetString(reader.GetOrdinal("users_phone")),
                         Email = reader.GetString(reader.GetOrdinal("users_email")),
                         CreationDate = reader.GetDateTime(reader.GetOrdinal("users_creationdate")),
-                        ModificationDate = reader.IsDBNull(reader.GetOrdinal("users_modificationdate"))
-                            ? null
-                            : reader.GetDateTime(reader.GetOrdinal("users_modificationdate")),
-                        Address = reader.GetString(reader.GetOrdinal("users_address")),
+                        ModificationDate = reader.IsDBNull(reader.GetOrdinal("users_modificationdate")) ? null : reader.GetDateTime(reader.GetOrdinal("users_modificationdate")),
+                        Address = reader.IsDBNull(reader.GetOrdinal("users_address")) ? null : reader.GetString(reader.GetOrdinal("users_address")),
                         ProfilePhoto = reader["users_profilephoto"] as byte[],
                         ProfilePhoto64 = reader["users_profilephoto"] != DBNull.Value
                             ? "data:image/png;base64," + Convert.ToBase64String((byte[])reader["users_profilephoto"])
-                            : "assets/images/users/UsersIcon",
+                            : "/assets/images/default-user.png",
                         SenecytCode = reader["users_senecytcode"] as string,
                         XKeyTaxo = reader["users_xkeytaxo"] as string,
-                        XPassTaxo = reader["users_xpasstaxo"] as string,
                         Login = reader.GetString(reader.GetOrdinal("users_login")),
                         Status = reader.GetInt32(reader.GetOrdinal("users_status")),
                         ProfileId = reader.GetInt32(reader.GetOrdinal("users_profileid")),
-                        UserSpecialtyid = reader.GetInt32(reader.GetOrdinal("users_specialityid")),
+                        ProfileName = reader.IsDBNull(reader.GetOrdinal("profile_name")) ? "Sin Perfil" : reader.GetString(reader.GetOrdinal("profile_name")),
+                        UserSpecialtyid = reader.IsDBNull(reader.GetOrdinal("users_specialityid")) ? null : reader.GetInt32(reader.GetOrdinal("users_specialityid")),
+                        SpecialtyName = reader.IsDBNull(reader.GetOrdinal("speciality_name")) ? "Sin Especialidad" : reader.GetString(reader.GetOrdinal("speciality_name")),
                         UserCountryid = reader.IsDBNull(reader.GetOrdinal("users_countryid")) ? null : reader.GetInt32(reader.GetOrdinal("users_countryid")),
-                        UserDescription = reader.IsDBNull(reader.GetOrdinal("users_description"))
-                            ? "Sin especificar"
-                            : reader.GetString(reader.GetOrdinal("users_description")),
-                        ProfileName = reader.IsDBNull(reader.GetOrdinal("profile_name"))
-                            ? "Sin perfil"
-                            : reader.GetString(reader.GetOrdinal("profile_name")),
-                        UserEstablishmentid = reader.IsDBNull(reader.GetOrdinal("user_establishment_id")) ? null : reader.GetInt32(reader.GetOrdinal("user_establishment_id")),
-                        SpecialtyName = reader.IsDBNull(reader.GetOrdinal("speciality_name"))
-                            ? "Sin especialidad"
-                            : reader.GetString(reader.GetOrdinal("speciality_name")),
-                        CountryName = reader.IsDBNull(reader.GetOrdinal("country_name"))
-                            ? "Sin país"
-                            : reader.GetString(reader.GetOrdinal("country_name")),
-                        StartTime = reader.GetTimeSpan(reader.GetOrdinal("start_time")),
-                        EndTime = reader.GetTimeSpan(reader.GetOrdinal("end_time")),
-                        AppointmentInterval = reader.GetInt32(reader.GetOrdinal("appointment_interval"))
+                        CountryName = reader.IsDBNull(reader.GetOrdinal("country_name")) ? "Sin País" : reader.GetString(reader.GetOrdinal("country_name")),
+                        UserDescription = reader.IsDBNull(reader.GetOrdinal("users_description")) ? "" : reader.GetString(reader.GetOrdinal("users_description")),
+                        StartTime = reader.IsDBNull(reader.GetOrdinal("start_time")) ? TimeSpan.Zero : reader.GetTimeSpan(reader.GetOrdinal("start_time")),
+                        EndTime = reader.IsDBNull(reader.GetOrdinal("end_time")) ? TimeSpan.Zero : reader.GetTimeSpan(reader.GetOrdinal("end_time")),
+                        AppointmentInterval = reader.IsDBNull(reader.GetOrdinal("appointment_interval")) ? 20 : reader.GetInt32(reader.GetOrdinal("appointment_interval"))
                     };
                 }
 
-                // 🗂 Segundo result set: archivos (logo, certificado, etc.)
-                if (await reader.NextResultAsync() && reader.HasRows)
+                if (user == null) return null; // Salida temprana si el usuario no existe
+
+                // --- RESULTADO 2: DÍAS LABORALES (NUEVO) ---
+                if (await reader.NextResultAsync())
                 {
                     while (await reader.ReadAsync())
                     {
-                        files.Add(new UserFileDto
+                        user.ScheduleDays.Add(new UserScheduleDayDto
+                        {
+                            ScheduleDayId = reader.GetInt32(reader.GetOrdinal("schedule_day_id")),
+                            ScheduleId = reader.GetInt32(reader.GetOrdinal("schedule_id")),
+                            WorkingDay = reader.GetString(reader.GetOrdinal("working_day"))
+                        });
+                    }
+                }
+
+                // --- RESULTADO 3: ARCHIVOS ADJUNTOS ---
+                if (await reader.NextResultAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        user.UserFiles.Add(new UserFileDto
                         {
                             FileType = reader.GetString(reader.GetOrdinal("file_type")),
                             FileName = reader.GetString(reader.GetOrdinal("file_name")),
@@ -390,71 +390,45 @@ namespace ExpertMed.Services
                     }
                 }
 
-                // 🏥 Tercer result set: consultorios
-                if (await reader.NextResultAsync() && reader.HasRows)
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        consultorios.Add(new MedicalOfficeDto
-                        {
-                            OfficeId = reader.GetInt32(reader.GetOrdinal("medicaloffice_id")),
-                            OfficeName = reader.IsDBNull(reader.GetOrdinal("medicaloffice_name"))
-                                ? "Sin nombre"
-                                : reader.GetString(reader.GetOrdinal("medicaloffice_name")),
-                            OfficeLocation = reader.IsDBNull(reader.GetOrdinal("medicaloffice_location"))
-                                ? "Sin ubicación"
-                                : reader.GetString(reader.GetOrdinal("medicaloffice_location"))
-                        });
-                    }
-                }
+                // --- RESULTADO 4: CONSULTORIOS ---
                 if (await reader.NextResultAsync())
                 {
                     while (await reader.ReadAsync())
                     {
-                        workingDays.Add(new UserScheduleDayDto
+                        user.MedicalOffices.Add(new MedicalOfficeDto
                         {
-                            ScheduleDayId = reader.GetInt32(reader.GetOrdinal("schedule_day_id")),
-                            ScheduleId = reader.GetInt32(reader.GetOrdinal("schedule_id")),
-                            WorkingDay = reader.GetString(reader.GetOrdinal("working_day"))
+                            OfficeId = reader.GetInt32(reader.GetOrdinal("medicaloffice_id")),
+                            OfficeName = reader.IsDBNull(reader.GetOrdinal("medicaloffice_name")) ? "S/N" : reader.GetString(reader.GetOrdinal("medicaloffice_name")),
+                            OfficeLocation = reader.IsDBNull(reader.GetOrdinal("medicaloffice_location")) ? "S/L" : reader.GetString(reader.GetOrdinal("medicaloffice_location"))
                         });
                     }
                 }
-                // 👨‍⚕️ Cuarto result set: médicos asociados
-                if (userDetails != null && userDetails.ProfileName.Equals("Asistente", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (await reader.NextResultAsync() && reader.HasRows)
-                    {
-                        while (await reader.ReadAsync())
-                        {
-                            doctors.Add(new DoctorDto
-                            {
-                                DoctorId = reader.GetInt32(reader.GetOrdinal("doctor_id")),
-                                DoctorNames = reader.GetString(reader.GetOrdinal("doctor_names")),
-                                DoctorSurnames = reader.GetString(reader.GetOrdinal("doctor_surnames")),
-                                DoctorSpecialtyId = reader.GetInt32(reader.GetOrdinal("doctor_specialtyid")),
-                                DoctorSpecialtyName = reader.GetString(reader.GetOrdinal("doctor_specialty_name"))
-                            });
-                        }
-                    }
-                }
 
-                // 🧩 Asignar listas completadas
-                if (userDetails != null)
+                // --- RESULTADO 5: MÉDICOS ASOCIADOS (Solo si es Asistente) ---
+                if (await reader.NextResultAsync())
                 {
-                    userDetails.Doctors = doctors;
-                    userDetails.MedicalOffices = consultorios;
-                    userDetails.UserFiles = files;
-                    userDetails.ScheduleDays = workingDays; // Asignación de días
+                    while (await reader.ReadAsync())
+                    {
+                        user.Doctors.Add(new DoctorDto
+                        {
+                            DoctorId = reader.GetInt32(reader.GetOrdinal("doctor_id")),
+                            DoctorNames = reader.GetString(reader.GetOrdinal("doctor_names")),
+                            DoctorSurnames = reader.GetString(reader.GetOrdinal("doctor_surnames")),
+                            DoctorSpecialtyId = reader.GetInt32(reader.GetOrdinal("doctor_specialtyid")),
+                            DoctorSpecialtyName = reader.IsDBNull(reader.GetOrdinal("doctor_specialty_name")) ? "General" : reader.GetString(reader.GetOrdinal("doctor_specialty_name"))
+                        });
+                    }
                 }
             }
             catch (Exception ex)
             {
-                throw new Exception("Error al obtener los detalles del usuario", ex);
+                // Registro de error para auditoría ISO 27001
+                // _logger.LogError(ex, "Error al obtener perfil completo del usuario {UserId}", userId);
+                throw new ApplicationException("Error interno al recuperar los datos del perfil.", ex);
             }
 
-            return userDetails;
+            return user;
         }
-
         //Metodo para actualizar un usuario
 
 

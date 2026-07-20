@@ -369,33 +369,52 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-lg-12">
-                                    <div class="mb-3">
-                                        <label for="workDaysSelect" class="form-label">Días de trabajo</label>
-                                        <select class="form-control" id="workDaysSelect" name="WorksDays" multiple required>
-                                            @{
-                                                // Definimos un diccionario o lista para iterar los días
-                                                var diasSemana = new Dictionary<string, string> {
-                                                                                        { "1", "Lunes" }, { "2", "Martes" }, { "3", "Miércoles" },
-                                                                                        { "4", "Jueves" }, { "5", "Viernes" }, { "6", "Sábado" }, { "0", "Domingo" }
-                                                                                        };
+                            <div class="col-lg-12">
+                                <div class="mb-3">
+                                    <label for="workDaysSelect" class="form-label fw-bold text-primary">
+                                        <i class="fas fa-calendar-alt me-1"></i> Días de Jornada Laboral
+                                    </label>
+        
+                                    @* Importante: El atributo 'name="WorksDays"' debe coincidir con el parámetro
+           que recibas en tu método [HttpPost] del controlador (ej. List<string> WorksDays)
+        *@
+                                    <select class="form-select select2-multiple" id="workDaysSelect" name="WorksDays"
+                                            multiple="multiple" data-placeholder="Seleccione los días de atención" required>
+                                        @{
+                                            // Diccionario estandarizado: Key (ID para DB) - Value (Texto para Usuario)
+                                            var diasSemana = new Dictionary<string, string> {
+                    { "1", "Lunes" },
+                    { "2", "Martes" },
+                    { "3", "Miércoles" },
+                    { "4", "Jueves" },
+                    { "5", "Viernes" },
+                    { "6", "Sábado" },
+                    { "0", "Domingo" }
+                };
 
-                                                foreach (var dia in diasSemana)
-                                                {
-                                                    // Lógica para marcar como 'selected' si el día existe en los detalles del usuario
-                                                    // Comparamos el nombre o el ID según lo que guardes en 'WorkingDay'
-                                                    bool isSelected = Model.User.ScheduleDays.Any(d =>
+                                            // Accedemos a los días a través de Model.User para evitar el error de definición
+                                            // Usamos el operador null-conditional (?.) y Coalesce (??) por seguridad.
+                                            var userScheduleDays = Model.User?.ScheduleDays ?? new List<ExpertMed.Models.UserScheduleDayDto>();
+
+                                            foreach (var dia in diasSemana)
+                                            {
+                                                // Comparamos contra el nombre (Value) o el ID (Key) almacenado en la DB
+                                                bool isSelected = userScheduleDays.Any(d =>
                                                     d.WorkingDay.Equals(dia.Value, StringComparison.OrdinalIgnoreCase) ||
                                                     d.WorkingDay == dia.Key);
 
-                                                    <option value="@dia.Key" selected="@(isSelected ? "selected" : null)">@dia.Value</option>
-                                                }
+                                                <option value="@dia.Key" selected="@(isSelected ? "selected" : "false")">@dia.Value</option>
                                             }
-                                        </select>
-                                        <div class="invalid-feedback">POR FAVOR SELECCIONE AL MENOS UN DÍA</div>
+                                        }
+                                    </select>
+                                    <div class="invalid-feedback">
+                                        <i class="fas fa-exclamation-triangle"></i> Debe seleccionar al menos un día de trabajo para habilitar la agenda.
                                     </div>
+                                    <small class="text-muted d-block mt-1">
+                                        <i class="fas fa-info-circle"></i> Los días seleccionados definen cuándo el profesional estará disponible para citas.
+                                    </small>
                                 </div>
-
+                            </div>
                                 <div class=" col-lg-12">
                                     <div>
                                         <label for="exampleFormControlTextarea5" class="form-label">Descripcion del doctor</label>
@@ -524,48 +543,60 @@
     <script>
 
         document.addEventListener("DOMContentLoaded", function () {
-            const profileSelect = document.getElementById("profileSelect");
-            const doctorSelectContainer = document.getElementById("doctorSelectContainer");
-            // 1. Inicialización de Días Laborales (Mover aquí adentro)
-            const workDaysElem = document.getElementById('workDaysSelect');
-            if (workDaysElem) {
-                // Opción A: Usar la función global del template si existe
-                if (typeof initChoices === "function") {
-                    initChoices(workDaysElem, {
-                        removeItemButton: true,
-                        placeholderValue: 'Seleccione los días laborales',
-                        searchEnabled: false,
-                        shouldSort: false, // Importante para mantener el orden de Lun-Dom
-                        paste: false
-                    });
-                }
-                // Opción B: Inicialización directa con la librería Choices
-                else if (typeof Choices !== "undefined") {
-                    new Choices(workDaysElem, {
-                        removeItemButton: true,
-                        placeholderValue: 'Seleccione los días laborales',
-                        searchEnabled: false,
-                        shouldSort: false
-                    });
-                }
-            }
-            // Función para actualizar la visibilidad del contenedor de médicos
-            function updateDoctorSelectContainer() {
-                const selectedValue = profileSelect.value;
-                if (selectedValue === "3") { // Mostrar si el ProfileId es 3
-                    doctorSelectContainer.style.display = "block";
-                } else { // Ocultar en caso contrario
-                    doctorSelectContainer.style.display = "none";
-                }
-            }
+    
+        // === 1. Lógica de Días Laborales (Choices.js / Select2) ===
+        const initWorkDays = () => {
+        const workDaysElem = document.getElementById('workDaysSelect');
+        if (!workDaysElem) return;
 
-            // Validación inicial al cargar la página
-            updateDoctorSelectContainer();
+        const config = {
+        removeItemButton: true,
+        placeholderValue: 'Seleccione los días laborales',
+        searchEnabled: false,
+        shouldSort: false, // Mantenemos el orden Lunes -> Domingo
+        itemSelectText: 'Presione para seleccionar',
+        noChoicesText: 'No hay más días disponibles'
+        };
 
-            // Escuchar cambios en el select de perfiles
-            profileSelect.addEventListener("change", updateDoctorSelectContainer);
+        // Opción A: Función global del template (Mejor para consistencia visual)
+        if (typeof initChoices === "function") {
+        initChoices(workDaysElem, config);
+        }
+        // Opción B: Inicialización directa
+        else if (typeof Choices !== "undefined") {
+        new Choices(workDaysElem, config);
+        }
+        };
+
+        // === 2. Lógica de Perfiles y Visibilidad de Médicos (RBAC) ===
+        const initProfileLogic = () => {
+        const profileSelect = document.getElementById("profileSelect");
+        const doctorSelectContainer = document.getElementById("doctorSelectContainer");
+
+        if (!profileSelect || !doctorSelectContainer) return;
+
+        const updateVisibility = () => {
+        // "3" es el ProfileId para Asistente según nuestro SP
+        const isAssistant = profileSelect.value === "3";
+        doctorSelectContainer.style.display = isAssistant ? "block" : "none";
+            
+        // Tip Pro: Si se oculta, podrías querer limpiar la selección de médicos
+        // para evitar enviar datos basura al servidor.
+        if (!isAssistant) {
+        const docSelect = doctorSelectContainer.querySelector('select');
+        if (docSelect && docSelect.choices) docSelect.choices.removeActiveItems();
+        }
+        };
+
+        // Ejecución inicial y evento
+        updateVisibility();
+        profileSelect.addEventListener("change", updateVisibility);
+        };
+
+        // Ejecución de módulos
+        initWorkDays();
+        initProfileLogic();
         });
-           
         document.addEventListener('DOMContentLoaded', function () {
             const doctorSelect = document.getElementById('doctorSelect');
             const selectedDoctorIdsInput = document.getElementById('selectedDoctorIds');

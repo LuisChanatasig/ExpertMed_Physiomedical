@@ -31,10 +31,39 @@ const UI = {
 let therapySessions = [];
 let flatpickrInstance = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
+
     initializeFlatpickr();
     initializeEventListeners();
+    initializeAppointmentContext();
+
+    loadAppointmentData();
+
+
 });
+
+function initializeAppointmentContext() {
+
+    const appointmentId =
+        parseInt(
+            document.getElementById('appointmentId')?.value || 0
+        );
+
+    const patientId =
+        parseInt(
+            document.getElementById('selectedPatientId')?.value || 0
+        );
+
+    if (appointmentId <= 0 || patientId <= 0)
+        return;
+
+    UI.inputs.patientId.value = patientId;
+
+    $(UI.inputs.patientId)
+        .trigger('change');
+
+    UI.inputs.patientId.disabled = true;
+}
 
 function initializeFlatpickr() {
     flatpickrInstance = flatpickr("#date", {
@@ -49,6 +78,61 @@ function initializeFlatpickr() {
     });
 }
 
+async function loadAppointmentData() {
+
+    const appointmentId =
+        parseInt(
+            document.getElementById('appointmentId')?.value || 0
+        );
+
+    if (appointmentId <= 0)
+        return;
+
+    try {
+
+        const response =
+            await fetch(
+                `${config.urlAppointment}?id=${appointmentId}`
+            );
+
+        const data =
+            await response.json();
+
+        if (data.appointmentReason) {
+
+            UI.inputs.observations.value =
+                data.appointmentReason;
+
+        }
+
+        // Evitar duplicarla si vuelven a cargar la página
+        if (therapySessions.length === 0) {
+
+            therapySessions.push({
+                sessionNumber: 1,
+                therapyType: 'Evaluación y diseño del plan de tratamiento',
+                date: data.date,
+                hour: data.time,
+                observations: data.appointmentReason || 'Valoración inicial',
+                isInitialEvaluation: true
+            });
+
+            renderTable();
+
+            UI.buttons.guardar.disabled = false;
+        }
+
+    }
+    catch (error) {
+
+        console.error(
+            'Error cargando cita:',
+            error
+        );
+
+    }
+
+}
 function initializeEventListeners() {
     UI.buttons.proyectar.addEventListener('click', proyectarSesiones);
     UI.buttons.guardar.addEventListener('click', guardarPlanCompleto);
@@ -107,15 +191,68 @@ function renderTable() {
         : '';
 
     therapySessions.forEach((s, i) => {
+
+        const isLocked = s.isInitialEvaluation === true;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td class="text-center">${s.sessionNumber}</td>
-            <td><input type="text" class="form-control form-control-sm" value="${s.therapyType}" onchange="updateSession(${i}, 'therapyType', this.value)"></td>
-            <td><input type="date" class="form-control form-control-sm" value="${s.date}" onchange="updateSession(${i}, 'date', this.value)"></td>
-            <td><input type="time" class="form-control form-control-sm" value="${s.hour}" onchange="updateSession(${i}, 'hour', this.value)"></td>
-            <td><textarea class="form-control form-control-sm" rows="1" onchange="updateSession(${i}, 'observations', this.value)">${s.observations}</textarea></td>
-            <td class="text-center"><button type="button" class="btn btn-sm btn-danger" onclick="eliminarSesion(${i})"><i class="mdi mdi-trash-can-outline"></i></button></td>
-        `;
+    <td class="text-center">
+        ${s.sessionNumber}
+    </td>
+
+    <td>
+        ${isLocked
+                ? `<span class="badge bg-primary">
+                        ${s.therapyType}
+                   </span>`
+                : `<input type="text"
+                          class="form-control form-control-sm"
+                          value="${s.therapyType}"
+                          onchange="updateSession(${i}, 'therapyType', this.value)">`
+            }
+    </td>
+
+    <td>
+        ${isLocked
+                ? s.date
+                : `<input type="date"
+                          class="form-control form-control-sm"
+                          value="${s.date}"
+                          onchange="updateSession(${i}, 'date', this.value)">`
+            }
+    </td>
+
+    <td>
+        ${isLocked
+                ? s.hour
+                : `<input type="time"
+                          class="form-control form-control-sm"
+                          value="${s.hour}"
+                          onchange="updateSession(${i}, 'hour', this.value)">`
+            }
+    </td>
+
+    <td>
+        ${isLocked
+                ? s.observations
+                : `<textarea
+                        class="form-control form-control-sm"
+                        rows="1"
+                        onchange="updateSession(${i}, 'observations', this.value)"
+                    >${s.observations}</textarea>`
+            }
+    </td>
+
+    <td class="text-center">
+        ${isLocked
+                ? '<span class="badge bg-success">Cita inicial</span>'
+                : `<button type="button"
+                           class="btn btn-sm btn-danger"
+                           onclick="eliminarSesion(${i})">
+                        <i class="mdi mdi-trash-can-outline"></i>
+                   </button>`
+            }
+    </td>
+`;
         UI.table.tbody.appendChild(tr);
     });
 }
@@ -123,18 +260,61 @@ function renderTable() {
 function updateSession(i, f, v) { therapySessions[i][f] = v; }
 
 function eliminarSesion(i) {
+
+    if (therapySessions[i].isInitialEvaluation) {
+
+        Swal.fire(
+            'Atención',
+            'La sesión inicial de valoración no puede eliminarse.',
+            'warning'
+        );
+
+        return;
+    }
+
     therapySessions.splice(i, 1);
-    therapySessions.forEach((s, idx) => s.sessionNumber = idx + 1);
+
+    therapySessions.forEach(
+        (s, idx) => s.sessionNumber = idx + 1
+    );
+
     renderTable();
 }
 
+
 async function guardarPlanCompleto() {
+    if (therapySessions.length === 0) {
+
+        return Swal.fire(
+            'Atención',
+            'Debe agregar al menos una sesión.',
+            'warning'
+        );
+
+    }
     const payload = {
-        pacienteId: parseInt(UI.inputs.patientId.value),
-        terapeutaId: parseInt(UI.inputs.therapistId.value),
-        sesiones: therapySessions.map(s => ({
-            tipo: s.therapyType, fecha: s.date, hora: s.hour, sesionesCont: 1, observaciones: s.observations
-        }))
+
+        appointmentId:
+            parseInt(
+                document.getElementById('appointmentId').value || 0
+            ),
+
+        pacienteId:
+            parseInt(UI.inputs.patientId.value),
+
+        terapeutaId:
+            parseInt(UI.inputs.therapistId.value || 0),
+
+        sesiones:
+            therapySessions.map(s => ({
+
+                tipo: s.therapyType,
+                fecha: s.date,
+                hora: s.hour,
+                sesionesCont: 1,
+                observaciones: s.observations
+
+            }))
     };
     try {
         const res = await fetch(config.urlSubmit, {
@@ -144,7 +324,19 @@ async function guardarPlanCompleto() {
         });
         const result = await res.json();
         if (result.success) {
-            Swal.fire('¡Éxito!', 'Plan guardado', 'success').then(() => location.reload());
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Plan guardado',
+                text: 'Las terapias fueron registradas correctamente.',
+                confirmButtonText: 'Aceptar'
+            }).then(() => {
+
+                window.location.href =
+                    '/Fisioterapia/TherapyHistory';
+
+            });
+
         }
     } catch (e) { Swal.fire('Error', 'No se pudo guardar', 'error'); }
 }

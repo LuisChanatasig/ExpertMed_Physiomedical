@@ -1,9 +1,12 @@
-﻿namespace ExpertMed.Models { 
-public class TherapySubmissionDto
-{
-    public int PacienteId { get; set; }
-    public int TerapeutaId { get; set; }
-    public List<TherapySessionInput> Sesiones { get; set; }
-}
+﻿namespace ExpertMed.Models {
+    public class TherapySubmissionDto
+    {
+        public int AppointmentId { get; set; }
 
+        public int PacienteId { get; set; }
+
+        public int TerapeutaId { get; set; }
+
+        public List<TherapySessionInput> Sesiones { get; set; }
+    }
 }

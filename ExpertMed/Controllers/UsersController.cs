@@ -230,42 +230,52 @@ namespace ExpertMed.Controllers
             }
         }
 
-
-        [HttpGet("Actualizar-Usuario")]
+        [HttpGet("Actualizar-Usuario/{id}")]
         public async Task<IActionResult> UpdateUser(int id)
         {
-            var user = await _userService.GetUserDetailsAsync(id);
-            if (user == null) return NotFound("User Not Found");
+            int sessionUserId = HttpContext.Session.GetInt32("UsuarioId") ?? 0;
+            int sessionProfileId = HttpContext.Session.GetInt32("PerfilId") ?? 0;
 
-            int usuarioId = HttpContext.Session.GetInt32("UsuarioId") ?? 0;
-            int perfilId = HttpContext.Session.GetInt32("PerfilId") ?? 0;
+            if (sessionUserId == 0) return RedirectToAction("Login", "Auth");
 
-            var profiles = await _selectsService.GetAllProfilesAsync();
-            var specialties = await _selectsService.GetAllSpecialtiesAsync();
-            var countries = await _selectsService.GetAllCountriesAsync();
-            var percentage = await _selectsService.GetAllVatPercentageAsync();
-            var establishments = await _selectsService.GetAllEstablishmentAsync(perfilId, usuarioId);
-            var medics = await _selectsService.GetAllMedicsAsync(perfilId, usuarioId);
-            var consultorios = await _clinicaService.GetMedicalOfficesAsync(perfilId, usuarioId);
-
-            var viewModel = new NewUserViewModel
+            try
             {
-                User = user,
-                Profiles = profiles,
-                Specialties = specialties,
-                Countries = countries,
-                VatBillings = percentage,
-                Establishments = establishments,
-                Users = medics,
-                AssociatedDoctors = user.Doctors,
-                MedicalOfficeListDtos = consultorios
+                // 1. Obtener usuario primero (Independiente)
+                var user = await _userService.GetUserDetailsAsync(id);
+                if (user == null) return NotFound("El usuario solicitado no existe.");
 
-            };
+                // 2. Cargar catálogos uno por uno (Secuencial pero Asíncrono)
+                // Esto evita el conflicto del DbContext
+                var profiles = await _selectsService.GetAllProfilesAsync();
+                var specialties = await _selectsService.GetAllSpecialtiesAsync();
+                var countries = await _selectsService.GetAllCountriesAsync();
+                var percentage = await _selectsService.GetAllVatPercentageAsync();
+                var establishments = await _selectsService.GetAllEstablishmentAsync(sessionProfileId, sessionUserId);
+                var medics = await _selectsService.GetAllMedicsAsync(sessionProfileId, sessionUserId);
+                var consultorios = await _clinicaService.GetMedicalOfficesAsync(sessionProfileId, sessionUserId);
 
-            return View(viewModel);
+                // 3. Construir el ViewModel
+                var viewModel = new NewUserViewModel
+                {
+                    User = user,
+                    Profiles = profiles,
+                    Specialties = specialties,
+                    Countries = countries,
+                    VatBillings = percentage,
+                    Establishments = establishments,
+                    Users = medics,
+                    AssociatedDoctors = user.Doctors,
+                    MedicalOfficeListDtos = consultorios
+                };
+
+                return View(viewModel);
+            }
+            catch (Exception ex)
+            {
+                // _logger.LogError(ex, "Error en UpdateUser...");
+                return StatusCode(500, "Error de base de datos. Contacte a soporte.");
+            }
         }
-
-
 
         [HttpGet("Actualizar_Datos_Personales")]
         public async Task<IActionResult> UpdateUserP(int id)

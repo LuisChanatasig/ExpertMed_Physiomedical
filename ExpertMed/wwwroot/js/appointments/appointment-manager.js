@@ -79,6 +79,11 @@ const AppointmentManager = {
         } else {
             $('#payLaboratoryCol').hide();
         }
+
+        $('#therapyPlanCol').hide();
+        if ([1, 4].includes(status)) {
+            $('#therapyPlanCol').show();
+        }
     },
 
     /**
@@ -211,6 +216,7 @@ const AppointmentManager = {
         }
     },
 
+
     /**
      * Inicia una consulta
      */
@@ -231,6 +237,33 @@ const AppointmentManager = {
             console.error('Error al iniciar consulta:', error);
         }
     },
+
+
+
+    startTherapyPlan() {
+
+        try {
+
+            const appointmentId =
+                FormHelper.getRequiredValue('appointmentIdInput');
+
+            const patientId =
+                FormHelper.getRequiredValue('appointmentPatientId');
+
+            window.location.href =
+                `${AppConfig.ENDPOINTS.START_THERAPY_PLAN}?appointmentId=${appointmentId}&patientId=${patientId}`;
+
+        }
+        catch (error) {
+
+            ErrorHandler.showAlert(
+                'No se pudo iniciar el plan terapéutico'
+            );
+
+        }
+    },
+
+
 
     /**
      * Inicia una consulta de seguimiento
