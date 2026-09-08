@@ -417,39 +417,101 @@ namespace ExpertMed.Services
         /// </summary>
         /// <param name="appointmentId"></param>
         /// <param name="modifiedBy"></param>
-        public void DesactivateAppointment(int appointmentId, int modifiedBy)
+        public void DesactivateAppointment(
+            int appointmentId,
+            int modifiedBy,
+            string cancellationReason)
         {
-            using (SqlConnection connection = new SqlConnection(_dbContext.Database.GetConnectionString()))
+            if (appointmentId <= 0)
             {
-                try
-                {
-                    connection.Open();
+                throw new ArgumentException(
+                    "El identificador de la cita no es válido.",
+                    nameof(appointmentId));
+            }
 
-                    // Crear el comando para ejecutar el SP
-                    using (SqlCommand cmd = new SqlCommand("sp_DesactiveAppointment", connection))
-                    {
-                        cmd.CommandType = CommandType.StoredProcedure;
+            if (modifiedBy <= 0)
+            {
+                throw new ArgumentException(
+                    "El usuario que realiza la cancelación no es válido.",
+                    nameof(modifiedBy));
+            }
 
-                        // Agregar parámetros
-                        cmd.Parameters.Add(new SqlParameter("@AppointmentId", SqlDbType.Int)).Value = appointmentId;
-                        cmd.Parameters.Add(new SqlParameter("@ModifiedBy", SqlDbType.Int)).Value = modifiedBy;
+            cancellationReason = cancellationReason?.Trim();
 
-                        // Ejecutar el procedimiento almacenado
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Manejo de errores
-                    Console.WriteLine($"Error al desactivar la cita: {ex.Message}");
-                }
+            if (string.IsNullOrWhiteSpace(cancellationReason))
+            {
+                throw new ArgumentException(
+                    "Debe ingresar el motivo de cancelación.",
+                    nameof(cancellationReason));
+            }
+
+            if (cancellationReason.Length < 10)
+            {
+                throw new ArgumentException(
+                    "El motivo de cancelación debe contener al menos 10 caracteres.",
+                    nameof(cancellationReason));
+            }
+
+            if (cancellationReason.Length > 500)
+            {
+                throw new ArgumentException(
+                    "El motivo de cancelación no puede superar los 500 caracteres.",
+                    nameof(cancellationReason));
+            }
+
+            string connectionString =
+                _dbContext.Database.GetConnectionString()
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión.");
+
+            using SqlConnection connection =
+                new SqlConnection(connectionString);
+
+            using SqlCommand cmd =
+                new SqlCommand(
+                    "dbo.sp_DesactiveAppointment",
+                    connection);
+
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            cmd.Parameters.Add(
+                "@AppointmentId",
+                SqlDbType.Int
+            ).Value = appointmentId;
+
+            cmd.Parameters.Add(
+                "@ModifiedBy",
+                SqlDbType.Int
+            ).Value = modifiedBy;
+
+            cmd.Parameters.Add(
+                "@CancellationReason",
+                SqlDbType.NVarChar,
+                500
+            ).Value = cancellationReason;
+
+            try
+            {
+                connection.Open();
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqlException ex)
+            {
+                /*
+                 * El mensaje enviado mediante THROW desde SQL Server
+                 * estará disponible en ex.Message.
+                 */
+                throw new InvalidOperationException(
+                    ex.Message,
+                    ex);
             }
         }
+        
         /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="createUserId"></param>
-        /// <returns></returns>
+                 /// 
+                 /// </summary>
+                 /// <param name="createUserId"></param>
+                 /// <returns></returns>
         //public async Task<List<AppointmentViewModel>> GetAppointmentsForTodayAsync(int createUserId)
         //{
         //    var appointments = await _dbContext.Set<AppointmentViewModel>()

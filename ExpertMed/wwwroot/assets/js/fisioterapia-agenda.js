@@ -159,31 +159,89 @@ async function cargarHorasDisponibles(date) {
 }
 
 function proyectarSesiones() {
+
     const v = UI.inputs;
-    if (!v.patientId.value || !v.date.value || !v.hour.value) {
-        return Swal.fire('Atención', 'Complete paciente, fecha y hora.', 'warning');
+
+    if (
+        !v.patientId.value ||
+        !v.therapyType.value ||
+        !v.date.value ||
+        !v.hour.value
+    ) {
+        return Swal.fire(
+            'Atención',
+            'Complete paciente, tipo de terapia, fecha y hora.',
+            'warning'
+        );
     }
 
-    const count = parseInt(v.sessionCount.value);
-    const freq = parseInt(v.frequency.value);
+    let count =
+        parseInt(v.sessionCount.value) || 1;
+
+    const freq =
+        parseInt(
+            v.frequency.options[
+                v.frequency.selectedIndex
+            ].dataset.dias
+        ) || 0;
+
+    const therapyTypeId =
+        parseInt(v.therapyType.value) || 0;
+
+    const therapyTypeName =
+        v.therapyType.options[
+            v.therapyType.selectedIndex
+        ].dataset.nombre || '';
+
+    // Si es "Solo una vez",
+    // siempre genera una sola sesión.
+    if (freq === 0) {
+        count = 1;
+    }
+
     const startStr = v.date.value;
 
     for (let i = 0; i < count; i++) {
-        let dateObj = new Date(startStr + 'T00:00:00');
-        dateObj.setDate(dateObj.getDate() + (i * freq));
+
+        const dateObj =
+            new Date(startStr + 'T00:00:00');
+
+        dateObj.setDate(
+            dateObj.getDate() + (i * freq)
+        );
 
         therapySessions.push({
-            sessionNumber: therapySessions.length + 1,
-            therapyType: v.therapyType.value,
-            date: dateObj.toISOString().split('T')[0],
-            hour: v.hour.value,
-            observations: v.observations.value || 'Sin observaciones'
+
+            sessionNumber:
+                therapySessions.length + 1,
+
+            therapyTypeId:
+                therapyTypeId,
+
+            therapyType:
+                therapyTypeName,
+
+            date:
+                dateObj
+                    .toISOString()
+                    .split('T')[0],
+
+            hour:
+                v.hour.value,
+
+            observations:
+                v.observations.value ||
+                'Sin observaciones'
         });
     }
+
     renderTable();
+
     UI.buttons.guardar.disabled = false;
+
     flatpickrInstance.clear();
 }
+
 
 function renderTable() {
     UI.table.tbody.innerHTML = therapySessions.length === 0 

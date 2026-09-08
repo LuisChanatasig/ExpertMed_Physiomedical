@@ -12,7 +12,12 @@ namespace ExpertMed.Controllers
         private readonly TherapyService _therapyService;
         private readonly ILogger<FisioterapiaController> _logger;
 
-        public FisioterapiaController(PatientService patientService, SelectsService selectsService,  ILogger<FisioterapiaController> logger, UserService usersService, TherapyService therapyService)
+        public FisioterapiaController(
+     PatientService patientService,
+     SelectsService selectsService,
+     ILogger<FisioterapiaController> logger,
+     UserService usersService,
+     TherapyService therapyService)
         {
             _patientService = patientService;
             _selectsService = selectsService;
@@ -58,62 +63,8 @@ namespace ExpertMed.Controllers
 
 
 
-        [HttpGet]
-        public async Task<IActionResult> TherapySchedule(
-      int? appointmentId,
-      int? patientId)
-        {
-            try
-            {
-                int perfilId =
-                    Convert.ToInt32(HttpContext.Session.GetInt32("PerfilId"));
+      
 
-                int usuarioId =
-                    Convert.ToInt32(HttpContext.Session.GetInt32("UsuarioId"));
-
-                var pacientes =
-                    await _patientService.GetAllPatientsAsync(
-                        perfilId,
-                        usuarioId);
-
-                var todosLosUsuarios =
-                    _usersService.GetAllUsers(
-                        usuarioId,
-                        perfilId);
-
-                var terapeutas =
-                    todosLosUsuarios
-                    .Where(u => u.ProfileId == 7)
-                    .Select(u => new SelectDTO
-                    {
-                        Value = u.UserId.ToString(),
-                        Text = $"{u.Names} {u.Surnames}"
-                    })
-                    .ToList();
-
-                ViewBag.Pacientes = pacientes;
-                ViewBag.Terapeutas = terapeutas;
-
-                // NUEVO
-                ViewBag.AppointmentId = appointmentId;
-                ViewBag.PatientId = patientId;
-
-                return View();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Error cargando la agenda de terapias.");
-
-                TempData["ErrorMessage"] =
-                    "No se pudo cargar la agenda de terapias.";
-
-                return RedirectToAction(
-                    "TherapySchedule",
-                    "Fisioterapia");
-            }
-        }
         /// <summary>
         /// 
         /// </summary>
@@ -171,6 +122,104 @@ namespace ExpertMed.Controllers
             return RedirectToAction("TherapyHistory");
         }
 
+
+        [HttpGet]
+        public async Task<IActionResult> TherapySchedule(
+    int? appointmentId,
+    int? patientId)
+        {
+            try
+            {
+                int perfilId =
+                    HttpContext.Session.GetInt32("PerfilId") ?? 0;
+
+                int usuarioId =
+                    HttpContext.Session.GetInt32("UsuarioId") ?? 0;
+
+                if (usuarioId == 0)
+                {
+                    return RedirectToAction(
+                        "Login",
+                        "Account");
+                }
+
+                // =========================================
+                // PACIENTES
+                // =========================================
+
+                var pacientes =
+                    await _patientService.GetAllPatientsAsync(
+                        perfilId,
+                        usuarioId);
+
+
+                // =========================================
+                // TERAPEUTAS
+                // =========================================
+
+                var todosLosUsuarios =
+                    _usersService.GetAllUsers(
+                        usuarioId,
+                        perfilId);
+
+                var terapeutas =
+                    todosLosUsuarios
+                        .Where(u => u.ProfileId == 7)
+                        .Select(u => new SelectDTO
+                        {
+                            Value = u.UserId.ToString(),
+                            Text = $"{u.Names} {u.Surnames}"
+                        })
+                        .ToList();
+
+
+                // =========================================
+                // CATÁLOGO TIPOS DE TERAPIA
+                // =========================================
+
+                var tiposTerapia =
+                    await _therapyService
+                        .ObtenerTiposTerapiaAsync();
+
+
+                // =========================================
+                // CATÁLOGO FRECUENCIAS
+                // =========================================
+
+                var frecuencias =
+                    await _therapyService
+                        .ObtenerFrecuenciasTerapiaAsync();
+
+
+                // =========================================
+                // VIEWBAGS
+                // =========================================
+
+                ViewBag.Pacientes = pacientes;
+                ViewBag.Terapeutas = terapeutas;
+
+                ViewBag.TiposTerapia = tiposTerapia;
+                ViewBag.FrecuenciasTerapia = frecuencias;
+
+                ViewBag.AppointmentId = appointmentId;
+                ViewBag.PatientId = patientId;
+
+                return View();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error cargando la agenda de terapias.");
+
+                TempData["ErrorMessage"] =
+                    "No se pudo cargar la agenda de terapias.";
+
+                return RedirectToAction(
+                    "TherapySchedule",
+                    "Fisioterapia");
+            }
+        }
 
         public IActionResult TherapyAlerts()
         {

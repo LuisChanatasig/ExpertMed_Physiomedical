@@ -59,6 +59,15 @@
             .consultorio-card.selected .checkmark {
                 display: block;
             }
+              .swal2-container {
+        z-index: 20000 !important;
+    }
+
+    .swal2-textarea {
+        pointer-events: auto !important;
+        user-select: text !important;
+        cursor: text !important;
+    }
     </style>
 }
 
@@ -311,8 +320,12 @@
                                         else
                                         {
                                             <button class="btn btn-sm btn-soft-info"
-                                                    onclick="openOptionModal(@appt.AppointmentId, @appt.AppointmentStatus, @appt.AppointmentPatientId)">
-                                                <i class="ri-edit-line"></i> Revisar
+onclick="openOptionModal(
+    @appt.AppointmentId,
+    @appt.AppointmentStatus,
+    @appt.AppointmentPatientId,
+    '@appt.AppointmentDate.ToString("yyyy-MM-dd")'
+)">                                                <i class="ri-edit-line"></i> Revisar
                                             </button>
                                         }
                                     </div>
@@ -708,15 +721,15 @@
     </script>
 
     <!-- Módulos de la aplicación (en orden de dependencia) -->
-    <script src="~/js/appointments/config.js"></script>
-    <script src="~/js/appointments/helpers.js"></script>
-    <script src="~/js/appointments/api.js"></script>
-    <script src="~/js/appointments/date-filter.js"></script>
-    <script src="~/js/appointments/datatable-init.js"></script>
-    <script src="~/js/appointments/schedule-manager.js"></script>
-    <script src="~/js/appointments/vital-signs.js"></script>
-    <script src="~/js/appointments/appointment-manager.js"></script>
-    <script src="~/js/appointments/appointment-list-main.js"></script>
+    <script src="~/js/appointments/config.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/helpers.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/api.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/date-filter.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/datatable-init.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/schedule-manager.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/vital-signs.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/appointment-manager.js" asp-append-version="true"></script>
+    <script src="~/js/appointments/appointment-list-main.js" asp-append-version="true"></script>
 
     <!-- Configuración específica de esta vista -->
     <script>

@@ -18,6 +18,7 @@ namespace ExpertMed.Models
         public int? AppointmentCreateuser { get; set; }
 
         public int? AppointmentModifyuser { get; set; }
+        public string? AppointmentCancelObservation { get; set; }
 
         public DateTime AppointmentDate { get; set; }
 

@@ -70,18 +70,53 @@ const AppointmentAPI = {
     /**
      * Cancela/desactiva una cita
      */
-    async cancel(appointmentId) {
+    async cancel(appointmentId, cancellationReason) {
+        const normalizedReason = cancellationReason?.trim();
+
+        if (!appointmentId || appointmentId <= 0) {
+            throw new Error('El identificador de la cita no es válido.');
+        }
+
+        if (!normalizedReason) {
+            throw new Error('Debe ingresar el motivo de cancelación.');
+        }
+
+        if (normalizedReason.length < 10) {
+            throw new Error(
+                'El motivo de cancelación debe contener al menos 10 caracteres.'
+            );
+        }
+
+        if (normalizedReason.length > 500) {
+            throw new Error(
+                'El motivo de cancelación no puede superar los 500 caracteres.'
+            );
+        }
+
         try {
-            const response = await fetch(AppConfig.ENDPOINTS.DESACTIVATE_APPOINTMENT, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    AppointmentId: appointmentId,
-                    AppointmentModifyuser: AppConfig.USER_ID
-                })
-            });
+            const response = await fetch(
+                AppConfig.ENDPOINTS.DESACTIVATE_APPOINTMENT,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        AppointmentId: appointmentId,
+                        AppointmentModifyuser: AppConfig.USER_ID,
+                        AppointmentCancelObservation: normalizedReason
+                    })
+                }
+            );
 
             const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || 'No se pudo cancelar la cita.'
+                );
+            }
+
             this.invalidateCache(appointmentId);
 
             return data;

@@ -256,10 +256,10 @@ namespace ExpertMed.Controllers
                 }
 
                 // Validar que la fecha no sea pasada
-                if (date.Date < DateTime.Today)
-                {
-                    return BadRequest(new { success = false, message = "La fecha seleccionada no puede ser anterior a la fecha actual." });
-                }
+                //if (date.Date < DateTime.Today)
+                //{
+                //    return BadRequest(new { success = false, message = "La fecha seleccionada no puede ser anterior a la fecha actual." });
+                //}
 
                 // Llamar al servicio con los parámetros correspondientes
                 List<string> availableHours = _appointmentService.GetAvailableHours(userId, date, doctorUserId);
@@ -811,24 +811,107 @@ namespace ExpertMed.Controllers
         [HttpPost("desactivate")]
         public IActionResult DesactivateAppointment([FromBody] Appointment request)
         {
-            // Validar que la petici�n sea correcta
-            if (request.AppointmentId <= 0 || request.AppointmentModifyuser <= 0)
+            if (request == null)
             {
-                return BadRequest(new { message = "Los par�metros proporcionados no son v�lidos." });
+                return BadRequest(new
+                {
+                    message = "La solicitud no contiene información válida."
+                });
+            }
+
+            if (request.AppointmentId <= 0)
+            {
+                return BadRequest(new
+                {
+                    message = "El identificador de la cita no es válido."
+                });
+            }
+
+            if (!request.AppointmentModifyuser.HasValue ||
+                request.AppointmentModifyuser.Value <= 0)
+            {
+                return BadRequest(new
+                {
+                    message = "El usuario que realiza la cancelación no es válido."
+                });
+            }
+
+            string cancellationReason =
+                request.AppointmentCancelObservation?.Trim();
+
+            if (string.IsNullOrWhiteSpace(cancellationReason))
+            {
+                return BadRequest(new
+                {
+                    message = "Debe ingresar el motivo de cancelación."
+                });
+            }
+
+            if (cancellationReason.Length < 10)
+            {
+                return BadRequest(new
+                {
+                    message = "El motivo de cancelación debe contener al menos 10 caracteres."
+                });
+            }
+
+            if (cancellationReason.Length > 500)
+            {
+                return BadRequest(new
+                {
+                    message = "El motivo de cancelación no puede superar los 500 caracteres."
+                });
             }
 
             try
             {
-                // Llamar al servicio para desactivar la cita
-                _appointmentService.DesactivateAppointment(request.AppointmentId, request.AppointmentModifyuser ?? 0);
+                _appointmentService.DesactivateAppointment(
+                    request.AppointmentId,
+                    request.AppointmentModifyuser.Value,
+                    cancellationReason
+                );
 
-                // Retornar una respuesta exitosa en formato JSON
-                return Ok(new { message = "Cita desactivada correctamente." });
+                return Ok(new
+                {
+                    success = true,
+                    message = "Cita cancelada correctamente."
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = ex.Message
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                /*
+                 * Aquí llegarán también los mensajes generados
+                 * por el procedimiento almacenado, por ejemplo:
+                 *
+                 * - La fecha de la cita ya pasó.
+                 * - El motivo no es válido.
+                 * - La cita ya está cancelada.
+                 */
+                return BadRequest(new
+                {
+                    success = false,
+                    message = ex.Message
+                });
             }
             catch (Exception ex)
             {
-                // En caso de error, devolver mensaje de error en formato JSON
-                return StatusCode(500, new { message = $"Error al desactivar la cita: {ex.Message}" });
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new
+                    {
+                        success = false,
+                        message = "Ocurrió un error al cancelar la cita.",
+                        detail = ex.Message
+                    }
+                );
             }
         }
 

@@ -170,5 +170,104 @@ namespace ExpertMed.Services
             await command.ExecuteNonQueryAsync();
         }
 
+        public async Task<List<TerapiaTipoDTO>> ObtenerTiposTerapiaAsync()
+        {
+            var lista = new List<TerapiaTipoDTO>();
+
+            try
+            {
+                using var connection =
+                    new SqlConnection(_dbContext.Database.GetConnectionString());
+
+                using var command =
+                    new SqlCommand("sp_terapia_tipo_listar", connection)
+                    {
+                        CommandType = CommandType.StoredProcedure
+                    };
+
+                await connection.OpenAsync();
+
+                using var reader = await command.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    lista.Add(new TerapiaTipoDTO
+                    {
+                        TerapiaTipoId =
+                            Convert.ToInt32(reader["terapia_tipo_id"]),
+
+                        TerapiaCategoriaId =
+                            Convert.ToInt32(reader["terapia_categoria_id"]),
+
+                        Categoria =
+                            reader["categoria"]?.ToString() ?? string.Empty,
+
+                        Nombre =
+                            reader["nombre"]?.ToString() ?? string.Empty,
+
+                        Orden =
+                            Convert.ToInt32(reader["orden"])
+                    });
+                }
+
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error al obtener los tipos de terapia.");
+
+                throw;
+            }
+        }
+
+
+        public async Task<List<TerapiaFrecuenciaDTO>> ObtenerFrecuenciasTerapiaAsync()
+        {
+            var lista = new List<TerapiaFrecuenciaDTO>();
+
+            try
+            {
+                using var connection =
+                    new SqlConnection(_dbContext.Database.GetConnectionString());
+
+                using var command =
+                    new SqlCommand("sp_terapia_frecuencia_listar", connection)
+                    {
+                        CommandType = CommandType.StoredProcedure
+                    };
+
+                await connection.OpenAsync();
+
+                using var reader = await command.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    lista.Add(new TerapiaFrecuenciaDTO
+                    {
+                        TerapiaFrecuenciaId =
+                            Convert.ToInt32(reader["terapia_frecuencia_id"]),
+
+                        Dias =
+                            Convert.ToInt32(reader["dias"]),
+
+                        Nombre =
+                            reader["nombre"]?.ToString() ?? string.Empty
+                    });
+                }
+
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error al obtener las frecuencias de terapia.");
+
+                throw;
+            }
+        }
+
     }
 }

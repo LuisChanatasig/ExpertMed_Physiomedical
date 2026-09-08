@@ -14,6 +14,14 @@
         urlGetHours = Url.Action("GetAvailableHours", "Appointment"),
         urlAppointment = Url.Action("AppointmentGetById", "Appointment")
     };
+
+    var tiposTerapia =
+      ViewBag.TiposTerapia as List<TerapiaTipoDTO>
+      ?? new List<TerapiaTipoDTO>();
+
+    var frecuenciasTerapia =
+        ViewBag.FrecuenciasTerapia as List<TerapiaFrecuenciaDTO>
+        ?? new List<TerapiaFrecuenciaDTO>();
 }
 
 @section Styles{
@@ -142,32 +150,33 @@
 
                 <div class="col-md-3">
                     <label class="form-label">Tipo de Terapia</label>
-                    <select class="form-select select2" id="therapyType" required>
+
+                    <select class="form-select select2"
+                            id="therapyType"
+                            required>
+
                         <option value="">Seleccione el servicio...</option>
-                        <optgroup label="Fisioterapia Especializada">
-                            <option value="Fisioterapia neurológica">Fisioterapia neurológica</option>
-                            <option value="Fisioterapia deportiva">Fisioterapia deportiva </option>
-                            <option value="Fisioterapia traumatológica">Fisioterapia traumatológica </option>
-                            <option value="Fisioterapia geriátrica">Fisioterapia geriátrica </option>
-                            <option value="Fisioterapia pediátrica">Fisioterapia pediátrica </option>
-                            <option value="Fisioterapia facial">Fisioterapia facial </option>
-                            <option value="Fisioterapia convencional">Fisioterapia convencional </option>
-                        </optgroup>
-                        <optgroup label="Terapias Manuales y Especiales">
-                            <option value="Terapia manual y osteopatía">Terapia manual y osteopatía </option>
-                            <option value="Terapia de acupuntura + moxibustion">Terapia de acupuntura + moxibustion </option>
-                            <option value="Terapia neural">Terapia neural </option>
-                            <option value="Infiltraciones de plasma rico en plaquetas">Infiltraciones de plasma rico en plaquetas</option>
-                        </optgroup>
-                        <optgroup label="Gimnasio Terapéutico">
-                            <option value="Gimnasio terapéutico individual">Gimnasio terapéutico individual </option>
-                            <option value="Gimnasio terapéutico grupal (día)">Gimnasio terapéutico grupal (día) </option>
-                            <option value="Gimnasio terapéutico grupal (mes)">Gimnasio terapéutico grupal (mes) </option>
-                        </optgroup>
-                        <optgroup label="Otros">
-                            <option value="Evaluación y diseño del plan de tratamiento">Evaluación y diseño del plan </option>
-                            <option value="Estimulación temprana">Estimulación temprana </option>
-                        </optgroup>
+
+                        @foreach (var grupo in tiposTerapia
+                            .GroupBy(x => new
+                            {
+                                x.TerapiaCategoriaId,
+                                x.Categoria
+                            }))
+                        {
+                            <optgroup label="@grupo.Key.Categoria">
+
+                                @foreach (var terapia in grupo.OrderBy(x => x.Orden))
+                                {
+                                    <option value="@terapia.TerapiaTipoId"
+                                            data-nombre="@terapia.Nombre">
+                                        @terapia.Nombre
+                                    </option>
+                                }
+
+                            </optgroup>
+                        }
+
                     </select>
                 </div>
 
@@ -185,13 +194,18 @@
 
                 <div class="col-md-3">
                     <label class="form-label">Repetición / Frecuencia</label>
-                    <select class="form-select" id="frequency">
-                        <option value="0">Solo una vez</option>
-                        <option value="1">Cada 1 día (Diario)</option>
-                        <option value="2">Cada 2 días (Interdiario)</option>
-                        <option value="3">Cada 3 días</option>
-                        <option value="5">Cada 5 días</option>
-                        <option value="7">Cada 7 días (Semanal)</option>
+
+                    <select class="form-select select2"
+                            id="frequency">
+
+                        @foreach (var frecuencia in frecuenciasTerapia)
+                        {
+                            <option value="@frecuencia.TerapiaFrecuenciaId"
+                                    data-dias="@frecuencia.Dias">
+                                @frecuencia.Nombre
+                            </option>
+                        }
+
                     </select>
                 </div>
 

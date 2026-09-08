@@ -17,6 +17,7 @@ const AppointmentManager = {
     async openOptionsModal(id, status, patientId) {
         try {
             const data = await AppointmentAPI.getById(id);
+
             console.log('Datos de cita:', data);
 
             // Guardar IDs actuales
@@ -32,60 +33,221 @@ const AppointmentManager = {
                 hasLaboratoriesInput: data.hasLaboratories
             });
 
-            // Mostrar/ocultar botones según el estado
+            // Mostrar u ocultar botones según estado, fecha, pago, etc.
             this.updateModalButtons(data);
 
             // Abrir modal
             ModalManager.show('optionModal');
 
         } catch (error) {
-            console.error('Error al abrir modal de opciones:', error);
+            console.error(
+                'Error al abrir modal de opciones:',
+                error
+            );
+
+            await Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: error.message ||
+                    'No se pudo cargar la información de la cita.'
+            });
         }
     },
-
     /**
      * Actualiza la visibilidad de botones según el estado de la cita
-     */
+     */  
     updateModalButtons(data) {
-        const { status, hasConsultation, paymentStatus } = data;
+        console.log('Datos recibidos en updateModalButtons:', data);
 
-        // Ocultar inicialmente todos los botones de consulta
-        $('#startConsultCol, #startFollowupCol').hide();
+        const status = Number(
+            data.status ??
+            data.appointmentStatus ??
+            data.AppointmentStatus
+        );
 
-        // Mostrar "Empezar Consulta" si corresponde
-        if ([0, 1, 5].includes(status) && !hasConsultation) {
+        const hasConsultation =
+            data.hasConsultation ??
+            data.HasConsultation ??
+            false;
+
+        const paymentStatus = Number(
+            data.paymentStatus ??
+            data.appointmentPaymentStatus ??
+            data.PaymentStatus ??
+            0
+        );
+
+        const paymentStatusLab = Number(
+            data.paymentStatusLab ??
+            data.PaymentStatusLab ??
+            0
+        );
+
+        const hasLaboratories =
+            data.hasLaboratories ??
+            data.HasLaboratories ??
+            false;
+
+        /*
+         * Buscar la fecha con cualquiera de los nombres
+         * que podría devolver el backend.
+         */
+        const rawAppointmentDate =
+            data.appointmentDate ??
+            data.AppointmentDate ??
+            data.date ??
+            data.Date ??
+            data.appointment_date;
+
+        console.log('Fecha encontrada:', rawAppointmentDate);
+
+        const appointmentDate =
+            this.parseAppointmentDate(rawAppointmentDate);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const isValidDate =
+            appointmentDate instanceof Date &&
+            !Number.isNaN(appointmentDate.getTime());
+
+        const isPastAppointment =
+            isValidDate &&
+            appointmentDate < today;
+
+        console.log({
+            rawAppointmentDate,
+            appointmentDate,
+            today,
+            isValidDate,
+            isPastAppointment
+        });
+
+        // Ocultar inicialmente todos los botones
+        $(
+            '#startConsultCol, ' +
+            '#startFollowupCol, ' +
+            '#rescheduleCol, ' +
+            '#cancelCol, ' +
+            '#reminderCol, ' +
+            '#vitalSignsCol, ' +
+            '#payCol, ' +
+            '#payLaboratoryCol, ' +
+            '#therapyPlanCol'
+        ).hide();
+
+        // Empezar consulta
+        if (
+            [0, 1, 5].includes(status) &&
+            !hasConsultation
+        ) {
             $('#startConsultCol').show();
         }
 
-        // Mostrar "Seguimiento" si corresponde
-        if (status === 3 && !hasConsultation) {
+        // Seguimiento
+        if (
+            status === 3 &&
+            !hasConsultation
+        ) {
             $('#startFollowupCol').show();
         }
 
-        // Mostrar botones comunes
-        $('#rescheduleCol, #cancelCol, #reminderCol, #vitalSignsCol').show();
+        /*
+         * Botones comunes.
+         */
+        $('#reminderCol, #vitalSignsCol').show();
 
-        // Mostrar botón de pago solo si no está pagada
+        /*
+         * Reprogramar y cancelar:
+         * solo si la fecha es válida, no ha pasado
+         * y la cita no está cancelada ni finalizada.
+         */
+        if (
+            isValidDate &&
+            !isPastAppointment &&
+            ![2, 4].includes(status)
+        ) {
+            $('#rescheduleCol, #cancelCol').show();
+        }
+
+        // Pago pendiente
         if (paymentStatus === 0) {
             $('#payCol').show();
-        } else {
-            $('#payCol').hide();
         }
 
-        // ⬇️ NUEVA LÓGICA: Pagar Laboratorio
-        // Se muestra si el estado es 4 Y tiene laboratorios vinculados
-        if (status === 4 && hasLaboratories === true && (paymentStatusLab === 0 || !paymentStatusLab)) {
+        // Pago de laboratorio
+        if (
+            status === 4 &&
+            hasLaboratories === true &&
+            paymentStatusLab === 0
+        ) {
             $('#payLaboratoryCol').show();
-        } else {
-            $('#payLaboratoryCol').hide();
         }
 
-        $('#therapyPlanCol').hide();
+        // Plan terapéutico
         if ([1, 4].includes(status)) {
             $('#therapyPlanCol').show();
         }
     },
 
+    /**
+ * Convierte diferentes formatos de fecha a Date local.
+ */
+    parseAppointmentDate(value) {
+        if (!value) {
+            return null;
+        }
+
+        const text = String(value).trim();
+
+        /*
+         * Formatos:
+         * 2026-07-27
+         * 2026-07-27T00:00:00
+         */
+        let match = text.match(
+            /^(\d{4})-(\d{2})-(\d{2})/
+        );
+
+        if (match) {
+            return new Date(
+                Number(match[1]),
+                Number(match[2]) - 1,
+                Number(match[3])
+            );
+        }
+
+        /*
+         * Formato:
+         * 27/07/2026
+         */
+        match = text.match(
+            /^(\d{2})\/(\d{2})\/(\d{4})/
+        );
+
+        if (match) {
+            return new Date(
+                Number(match[3]),
+                Number(match[2]) - 1,
+                Number(match[1])
+            );
+        }
+
+        const parsedDate = new Date(text);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            console.error(
+                'No se pudo interpretar la fecha:',
+                value
+            );
+
+            return null;
+        }
+
+        parsedDate.setHours(0, 0, 0, 0);
+
+        return parsedDate;
+    },
     /**
      * Abre el modal de reprogramación
      */
@@ -187,35 +349,144 @@ const AppointmentManager = {
      * Cancela una cita
      */
     async cancelAppointment() {
+        /*
+         * Cerrar modal Bootstrap activo.
+         */
+        const modalElement = document.querySelector('.modal.show');
+
+        if (modalElement) {
+            const modalInstance =
+                bootstrap.Modal.getInstance(modalElement) ??
+                bootstrap.Modal.getOrCreateInstance(modalElement);
+
+            modalInstance.hide();
+
+            await new Promise(resolve => {
+                modalElement.addEventListener(
+                    'hidden.bs.modal',
+                    resolve,
+                    { once: true }
+                );
+            });
+        }
+
+        /*
+         * Cerrar offcanvas Bootstrap activo.
+         */
+        const offcanvasElement = document.querySelector('.offcanvas.show');
+
+        if (offcanvasElement) {
+            const offcanvasInstance =
+                bootstrap.Offcanvas.getInstance(offcanvasElement) ??
+                bootstrap.Offcanvas.getOrCreateInstance(offcanvasElement);
+
+            offcanvasInstance.hide();
+
+            await new Promise(resolve => {
+                offcanvasElement.addEventListener(
+                    'hidden.bs.offcanvas',
+                    resolve,
+                    { once: true }
+                );
+            });
+        }
+
         const result = await Swal.fire({
-            title: '¿Seguro de cancelar?',
-            text: 'Esta acción desactivará la cita',
+            title: 'Cancelar cita',
+            text: 'Ingrese el motivo por el cual se cancelará la cita.',
             icon: 'warning',
+
+            input: 'textarea',
+            inputLabel: 'Motivo de cancelación',
+            inputPlaceholder: 'Escriba aquí el motivo de cancelación...',
+
+            inputAttributes: {
+                maxlength: '500',
+                rows: '5',
+                autocomplete: 'off'
+            },
+
             showCancelButton: true,
             confirmButtonText: 'Sí, cancelar',
             cancelButtonText: 'No',
-            confirmButtonColor: '#d33'
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+
+            allowOutsideClick: false,
+            focusConfirm: false,
+            returnFocus: false,
+
+            inputValidator: value => {
+                const reason = value?.trim();
+
+                if (!reason) {
+                    return 'Debe ingresar el motivo de cancelación.';
+                }
+
+                if (reason.length < 10) {
+                    return 'El motivo debe contener al menos 10 caracteres.';
+                }
+
+                if (reason.length > 500) {
+                    return 'El motivo no puede superar los 500 caracteres.';
+                }
+
+                if (!reason.includes(' ')) {
+                    return 'Ingrese un motivo más descriptivo utilizando al menos dos palabras.';
+                }
+
+                return undefined;
+            },
+
+            didOpen: () => {
+                const textarea = Swal.getInput();
+
+                if (textarea) {
+                    textarea.disabled = false;
+                    textarea.readOnly = false;
+                    textarea.focus();
+                }
+            }
         });
 
-        if (!result.isConfirmed) return;
+        if (!result.isConfirmed) {
+            return;
+        }
 
         try {
-            const id = FormHelper.getRequiredValue('appointmentIdInput');
-            const response = await AppointmentAPI.cancel(id);
+            const appointmentId =
+                FormHelper.getRequiredValue('appointmentIdInput');
+
+            const cancellationReason = result.value.trim();
+
+            const response = await AppointmentAPI.cancel(
+                appointmentId,
+                cancellationReason
+            );
 
             await Swal.fire({
                 icon: 'success',
-                title: 'Cancelada',
-                text: response.message
+                title: 'Cita cancelada',
+                text: response.message,
+                confirmButtonText: 'Aceptar'
             });
 
-            window.location.href = AppConfig.ENDPOINTS.APPOINTMENT_LIST;
+            window.location.href =
+                AppConfig.ENDPOINTS.APPOINTMENT_LIST;
 
         } catch (error) {
             console.error('Error al cancelar cita:', error);
+
+            await Swal.fire({
+                icon: 'error',
+                title: 'No se pudo cancelar',
+                text:
+                    error.message ||
+                    'Ocurrió un error al cancelar la cita.',
+                confirmButtonText: 'Aceptar'
+            });
         }
     },
-
 
     /**
      * Inicia una consulta
